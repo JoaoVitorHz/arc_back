@@ -1,6 +1,7 @@
 const { Router } = require('express');
 const prisma = require('../lib/prisma');
 const { calcularResumoMes } = require('../services/financeiro.service');
+const { garantirDoEscritorio } = require('../utils/escopo');
 const {
   HttpError,
   parseId,
@@ -15,7 +16,7 @@ const {
 
 const router = Router();
 
-function dadosLancamento(body) {
+async function dadosLancamento(body, escritorioId) {
   if (!['RECEITA', 'DESPESA'].includes(body.tipo)) {
     throw new HttpError(400, 'Tipo deve ser RECEITA ou DESPESA');
   }
@@ -25,7 +26,7 @@ function dadosLancamento(body) {
   }
 
   const pago = Boolean(body.pago);
-  return {
+  const dados = {
     descricao: body.descricao?.trim(),
     tipo: body.tipo,
     valor,
@@ -35,6 +36,8 @@ function dadosLancamento(body) {
     categoria: emptyToNull(body.categoria),
     projetoId: toOptionalInt(body.projetoId),
   };
+  await garantirDoEscritorio('projeto', dados.projetoId, escritorioId);
+  return dados;
 }
 
 // GET /api/lancamentos?mes=2026-11&tipo=RECEITA&situacao=pendente&projetoId=1
@@ -43,6 +46,7 @@ router.get('/', async (req, res) => {
 
   const lancamentos = await prisma.lancamento.findMany({
     where: {
+      escritorioId: req.escritorioId,
       vencimento: mes ? monthRange(mes) : undefined,
       tipo: tipo || undefined,
       pago: situacao === 'pago' ? true : situacao === 'pendente' ? false : undefined,
@@ -57,13 +61,15 @@ router.get('/', async (req, res) => {
 
 // GET /api/lancamentos/resumo?mes=2026-11
 router.get('/resumo', async (req, res) => {
-  res.json(await calcularResumoMes(req.query.mes || currentMonth()));
+  res.json(await calcularResumoMes(req.query.mes || currentMonth(), req.escritorioId));
 });
 
 // POST /api/lancamentos
 router.post('/', async (req, res) => {
   requireFields(req.body, ['descricao', 'tipo', 'valor', 'vencimento']);
-  const lancamento = await prisma.lancamento.create({ data: dadosLancamento(req.body) });
+  const lancamento = await prisma.lancamento.create({
+    data: { ...(await dadosLancamento(req.body, req.escritorioId)), escritorioId: req.escritorioId },
+  });
   res.status(201).json(lancamento);
 });
 
@@ -71,8 +77,8 @@ router.post('/', async (req, res) => {
 router.put('/:id', async (req, res) => {
   requireFields(req.body, ['descricao', 'tipo', 'valor', 'vencimento']);
   const lancamento = await prisma.lancamento.update({
-    where: { id: parseId(req.params.id) },
-    data: dadosLancamento(req.body),
+    where: { id: parseId(req.params.id), escritorioId: req.escritorioId },
+    data: await dadosLancamento(req.body, req.escritorioId),
   });
   res.json(lancamento);
 });
@@ -81,7 +87,7 @@ router.put('/:id', async (req, res) => {
 router.patch('/:id/pagamento', async (req, res) => {
   const pago = Boolean(req.body.pago);
   const lancamento = await prisma.lancamento.update({
-    where: { id: parseId(req.params.id) },
+    where: { id: parseId(req.params.id), escritorioId: req.escritorioId },
     data: { pago, dataPagamento: pago ? new Date() : null },
   });
   res.json(lancamento);
@@ -89,7 +95,9 @@ router.patch('/:id/pagamento', async (req, res) => {
 
 // DELETE /api/lancamentos/:id
 router.delete('/:id', async (req, res) => {
-  await prisma.lancamento.delete({ where: { id: parseId(req.params.id) } });
+  await prisma.lancamento.delete({
+    where: { id: parseId(req.params.id), escritorioId: req.escritorioId },
+  });
   res.status(204).end();
 });
 

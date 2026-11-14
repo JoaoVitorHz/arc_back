@@ -20,16 +20,17 @@ router.get('/', async (req, res) => {
   const { busca } = req.query;
 
   const clientes = await prisma.cliente.findMany({
-    where: busca
-      ? {
-          OR: [
+    where: {
+      escritorioId: req.escritorioId,
+      OR: busca
+        ? [
             { nome: { contains: busca } },
             { email: { contains: busca } },
             { telefone: { contains: busca } },
             { documento: { contains: busca } },
-          ],
-        }
-      : undefined,
+          ]
+        : undefined,
+    },
     include: { _count: { select: { projetos: true } } },
     orderBy: { nome: 'asc' },
   });
@@ -39,8 +40,8 @@ router.get('/', async (req, res) => {
 
 // GET /api/clientes/:id
 router.get('/:id', async (req, res) => {
-  const cliente = await prisma.cliente.findUniqueOrThrow({
-    where: { id: parseId(req.params.id) },
+  const cliente = await prisma.cliente.findFirstOrThrow({
+    where: { id: parseId(req.params.id), escritorioId: req.escritorioId },
     include: { projetos: { orderBy: { criadoEm: 'desc' } } },
   });
   res.json(cliente);
@@ -49,7 +50,9 @@ router.get('/:id', async (req, res) => {
 // POST /api/clientes
 router.post('/', async (req, res) => {
   requireFields(req.body, ['nome']);
-  const cliente = await prisma.cliente.create({ data: dadosCliente(req.body) });
+  const cliente = await prisma.cliente.create({
+    data: { ...dadosCliente(req.body), escritorioId: req.escritorioId },
+  });
   res.status(201).json(cliente);
 });
 
@@ -57,7 +60,7 @@ router.post('/', async (req, res) => {
 router.put('/:id', async (req, res) => {
   requireFields(req.body, ['nome']);
   const cliente = await prisma.cliente.update({
-    where: { id: parseId(req.params.id) },
+    where: { id: parseId(req.params.id), escritorioId: req.escritorioId },
     data: dadosCliente(req.body),
   });
   res.json(cliente);
@@ -67,12 +70,14 @@ router.put('/:id', async (req, res) => {
 router.delete('/:id', async (req, res) => {
   const id = parseId(req.params.id);
 
-  const totalProjetos = await prisma.projeto.count({ where: { clienteId: id } });
+  const totalProjetos = await prisma.projeto.count({
+    where: { clienteId: id, escritorioId: req.escritorioId },
+  });
   if (totalProjetos > 0) {
     throw new HttpError(409, 'Este cliente possui projetos. Exclua ou transfira os projetos antes.');
   }
 
-  await prisma.cliente.delete({ where: { id } });
+  await prisma.cliente.delete({ where: { id, escritorioId: req.escritorioId } });
   res.status(204).end();
 });
 

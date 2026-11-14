@@ -1,6 +1,13 @@
 const { Router } = require('express');
+const autenticar = require('../middlewares/autenticar');
 
 const router = Router();
+
+// Rotas públicas
+router.use('/auth', require('./auth.routes'));
+
+// Daqui pra baixo, todas exigem login
+router.use(autenticar);
 
 router.use('/clientes', require('./clientes.routes'));
 router.use('/projetos', require('./projetos.routes'));

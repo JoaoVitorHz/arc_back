@@ -11,6 +11,9 @@ function errorHandler(err, req, res, next) {
     if (err.code === 'P2025') {
       return res.status(404).json({ erro: 'Registro não encontrado' });
     }
+    if (err.code === 'P2002') {
+      return res.status(409).json({ erro: 'Já existe um registro com esses dados' });
+    }
     if (err.code === 'P2003') {
       return res.status(400).json({ erro: 'Registro relacionado não existe ou está em uso' });
     }

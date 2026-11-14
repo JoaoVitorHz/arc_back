@@ -1,11 +1,11 @@
 const prisma = require('../lib/prisma');
 const { monthRange } = require('../utils/http');
 
-// Totais do mês agrupados por tipo (receita/despesa) e situação (pago/pendente)
-async function calcularResumoMes(mes) {
+// Totais do mês do escritório, agrupados por tipo (receita/despesa) e situação (pago/pendente)
+async function calcularResumoMes(mes, escritorioId) {
   const grupos = await prisma.lancamento.groupBy({
     by: ['tipo', 'pago'],
-    where: { vencimento: monthRange(mes) },
+    where: { escritorioId, vencimento: monthRange(mes) },
     _sum: { valor: true },
   });
 

@@ -1,6 +1,7 @@
 const { Router } = require('express');
 const prisma = require('../lib/prisma');
 const { ETAPAS_PADRAO } = require('../constants/etapas');
+const { garantirDoEscritorio } = require('../utils/escopo');
 const {
   parseId,
   requireFields,
@@ -18,8 +19,8 @@ function calcularProgresso(etapas) {
   return Math.round((concluidas / etapas.length) * 100);
 }
 
-function dadosProjeto(body) {
-  return {
+async function dadosProjeto(body, escritorioId) {
+  const dados = {
     nome: body.nome?.trim(),
     tipo: body.tipo || undefined,
     status: body.status || undefined,
@@ -30,6 +31,8 @@ function dadosProjeto(body) {
     observacoes: emptyToNull(body.observacoes),
     clienteId: parseId(body.clienteId),
   };
+  await garantirDoEscritorio('cliente', dados.clienteId, escritorioId);
+  return dados;
 }
 
 // GET /api/projetos?status=&clienteId=&busca=
@@ -38,6 +41,7 @@ router.get('/', async (req, res) => {
 
   const projetos = await prisma.projeto.findMany({
     where: {
+      escritorioId: req.escritorioId,
       status: status || undefined,
       clienteId: clienteId ? parseId(clienteId) : undefined,
       nome: busca ? { contains: busca } : undefined,
@@ -60,8 +64,8 @@ router.get('/', async (req, res) => {
 
 // GET /api/projetos/:id
 router.get('/:id', async (req, res) => {
-  const projeto = await prisma.projeto.findUniqueOrThrow({
-    where: { id: parseId(req.params.id) },
+  const projeto = await prisma.projeto.findFirstOrThrow({
+    where: { id: parseId(req.params.id), escritorioId: req.escritorioId },
     include: {
       cliente: true,
       etapas: { orderBy: { ordem: 'asc' } },
@@ -79,7 +83,8 @@ router.post('/', async (req, res) => {
 
   const projeto = await prisma.projeto.create({
     data: {
-      ...dadosProjeto(req.body),
+      ...(await dadosProjeto(req.body, req.escritorioId)),
+      escritorioId: req.escritorioId,
       etapas: {
         create: ETAPAS_PADRAO.map((nome, index) => ({ nome, ordem: index + 1 })),
       },
@@ -94,8 +99,8 @@ router.put('/:id', async (req, res) => {
   requireFields(req.body, ['nome', 'clienteId']);
 
   const projeto = await prisma.projeto.update({
-    where: { id: parseId(req.params.id) },
-    data: dadosProjeto(req.body),
+    where: { id: parseId(req.params.id), escritorioId: req.escritorioId },
+    data: await dadosProjeto(req.body, req.escritorioId),
   });
 
   res.json(projeto);
@@ -103,7 +108,9 @@ router.put('/:id', async (req, res) => {
 
 // DELETE /api/projetos/:id  (etapas são apagadas; eventos e lançamentos ficam sem projeto)
 router.delete('/:id', async (req, res) => {
-  await prisma.projeto.delete({ where: { id: parseId(req.params.id) } });
+  await prisma.projeto.delete({
+    where: { id: parseId(req.params.id), escritorioId: req.escritorioId },
+  });
   res.status(204).end();
 });
 
@@ -111,6 +118,7 @@ router.delete('/:id', async (req, res) => {
 router.post('/:id/etapas', async (req, res) => {
   requireFields(req.body, ['nome']);
   const projetoId = parseId(req.params.id);
+  await garantirDoEscritorio('projeto', projetoId, req.escritorioId);
 
   const ultima = await prisma.etapa.findFirst({
     where: { projetoId },

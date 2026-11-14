@@ -10,6 +10,39 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+// ---------- Escritórios e usuários ----------
+// Cada escritório só enxerga os próprios dados (multi-tenant por escritorioId)
+
+model Escritorio {
+  id           Int      @id @default(autoincrement())
+  nome         String
+  criadoEm     DateTime @default(now())
+  atualizadoEm DateTime @updatedAt
+
+  usuarios    Usuario[]
+  clientes    Cliente[]
+  projetos    Projeto[]
+  eventos     Evento[]
+  lancamentos Lancamento[]
+
+  @@map("escritorios")
+}
+
+model Usuario {
+  id           Int      @id @default(autoincrement())
+  nome         String
+  email        String   @unique
+  senhaHash    String
+  criadoEm     DateTime @default(now())
+  atualizadoEm DateTime @updatedAt
+
+  escritorioId Int
+  escritorio   Escritorio @relation(fields: [escritorioId], references: [id], onDelete: Cascade)
+
+  @@index([escritorioId])
+  @@map("usuarios")
+}
+
 // ---------- Clientes ----------
 
 model Cliente {
@@ -23,9 +56,13 @@ model Cliente {
   criadoEm    DateTime @default(now())
   atualizadoEm DateTime @updatedAt
 
+  escritorioId Int
+  escritorio   Escritorio @relation(fields: [escritorioId], references: [id], onDelete: Cascade)
+
   projetos Projeto[]
   eventos  Evento[]
 
+  @@index([escritorioId])
   @@map("clientes")
 }
 
@@ -57,6 +94,9 @@ model Projeto {
   criadoEm        DateTime      @default(now())
   atualizadoEm    DateTime      @updatedAt
 
+  escritorioId Int
+  escritorio   Escritorio @relation(fields: [escritorioId], references: [id], onDelete: Cascade)
+
   clienteId Int
   cliente   Cliente @relation(fields: [clienteId], references: [id], onDelete: Restrict)
 
@@ -64,6 +104,7 @@ model Projeto {
   eventos     Evento[]
   lancamentos Lancamento[]
 
+  @@index([escritorioId])
   @@index([clienteId])
   @@map("projetos")
 }
@@ -111,11 +152,15 @@ model Evento {
   criadoEm  DateTime   @default(now())
   atualizadoEm DateTime @updatedAt
 
+  escritorioId Int
+  escritorio   Escritorio @relation(fields: [escritorioId], references: [id], onDelete: Cascade)
+
   clienteId Int?
   cliente   Cliente? @relation(fields: [clienteId], references: [id], onDelete: SetNull)
   projetoId Int?
   projeto   Projeto? @relation(fields: [projetoId], references: [id], onDelete: SetNull)
 
+  @@index([escritorioId, inicio])
   @@index([inicio])
   @@map("eventos")
 }
@@ -139,9 +184,13 @@ model Lancamento {
   criadoEm      DateTime       @default(now())
   atualizadoEm  DateTime       @updatedAt
 
+  escritorioId Int
+  escritorio   Escritorio @relation(fields: [escritorioId], references: [id], onDelete: Cascade)
+
   projetoId Int?
   projeto   Projeto? @relation(fields: [projetoId], references: [id], onDelete: SetNull)
 
+  @@index([escritorioId, vencimento])
   @@index([vencimento])
   @@map("lancamentos")
 }

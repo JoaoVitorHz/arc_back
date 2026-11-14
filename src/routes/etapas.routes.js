@@ -6,6 +6,12 @@ const router = Router();
 
 const STATUS_VALIDOS = ['NAO_INICIADA', 'EM_ANDAMENTO', 'CONCLUIDA'];
 
+// A etapa pertence ao escritório pelo projeto dela
+const daEtapa = (req) => ({
+  id: parseId(req.params.id),
+  projeto: { escritorioId: req.escritorioId },
+});
+
 // PATCH /api/etapas/:id  (atualiza só os campos enviados)
 router.patch('/:id', async (req, res) => {
   const { nome, status, dataPrevista } = req.body;
@@ -23,17 +29,14 @@ router.patch('/:id', async (req, res) => {
     data.dataPrevista = toDate(dataPrevista);
   }
 
-  const etapa = await prisma.etapa.update({
-    where: { id: parseId(req.params.id) },
-    data,
-  });
+  const etapa = await prisma.etapa.update({ where: daEtapa(req), data });
 
   res.json(etapa);
 });
 
 // DELETE /api/etapas/:id
 router.delete('/:id', async (req, res) => {
-  await prisma.etapa.delete({ where: { id: parseId(req.params.id) } });
+  await prisma.etapa.delete({ where: daEtapa(req) });
   res.status(204).end();
 });
 

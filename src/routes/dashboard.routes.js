@@ -9,13 +9,14 @@ const router = Router();
 router.get('/', async (req, res) => {
   const agora = new Date();
   const hojeUtc = new Date(Date.UTC(agora.getFullYear(), agora.getMonth(), agora.getDate()));
+  const { escritorioId } = req;
 
   const [projetosAtivos, totalClientes, projetos, proximosEventos, contasVencidas, resumoMes] =
     await Promise.all([
-      prisma.projeto.count({ where: { status: 'ATIVO' } }),
-      prisma.cliente.count(),
+      prisma.projeto.count({ where: { escritorioId, status: 'ATIVO' } }),
+      prisma.cliente.count({ where: { escritorioId } }),
       prisma.projeto.findMany({
-        where: { status: 'ATIVO' },
+        where: { escritorioId, status: 'ATIVO' },
         include: {
           cliente: { select: { id: true, nome: true } },
           etapas: { select: { status: true, nome: true, ordem: true } },
@@ -24,7 +25,7 @@ router.get('/', async (req, res) => {
         take: 6,
       }),
       prisma.evento.findMany({
-        where: { inicio: { gte: agora } },
+        where: { escritorioId, inicio: { gte: agora } },
         include: {
           cliente: { select: { id: true, nome: true } },
           projeto: { select: { id: true, nome: true } },
@@ -32,8 +33,8 @@ router.get('/', async (req, res) => {
         orderBy: { inicio: 'asc' },
         take: 5,
       }),
-      prisma.lancamento.count({ where: { pago: false, vencimento: { lt: hojeUtc } } }),
-      calcularResumoMes(currentMonth()),
+      prisma.lancamento.count({ where: { escritorioId, pago: false, vencimento: { lt: hojeUtc } } }),
+      calcularResumoMes(currentMonth(), escritorioId),
     ]);
 
   const projetosResumo = projetos.map(({ etapas, ...projeto }) => {

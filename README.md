@@ -13,15 +13,17 @@ API do **ArcGestão**, sistema de gestão para escritórios de arquitetura.
    ```
 3. Configure o ambiente e instale as dependências:
    ```bash
-   cp .env.example .env   # ajuste DATABASE_URL se o seu MySQL tiver senha
+   cp .env.example .env   # ajuste DATABASE_URL e gere um JWT_SECRET (instruções no arquivo)
    npm install
    npm run db:migrate     # cria as tabelas
-   npm run db:seed        # (opcional) dados de exemplo
+   npm run db:seed        # (opcional) conta demo com dados de exemplo
    ```
 4. Suba a API:
    ```bash
    npm run dev            # http://localhost:3333
    ```
+
+**Conta demo** (criada pelo seed): `demo@arcgestao.com` / `demo12345`
 
 ## Scripts
 
@@ -30,7 +32,7 @@ API do **ArcGestão**, sistema de gestão para escritórios de arquitetura.
 | `npm run dev` | Sobe a API e reinicia ao salvar arquivos |
 | `npm start` | Sobe a API (produção) |
 | `npm run db:migrate` | Aplica/cria migrações a partir do `prisma/schema.prisma` |
-| `npm run db:seed` | **Apaga tudo** e insere dados de exemplo |
+| `npm run db:seed` | Recria do zero a conta demo e seus dados de exemplo (outras contas não são alteradas) |
 | `npm run db:studio` | Abre o Prisma Studio para ver/editar os dados |
 
 ## Estrutura
@@ -45,11 +47,20 @@ src/
   app.js               # Express, CORS, rotas e tratamento de erros
   routes/              # um arquivo por recurso
   services/            # regras reaproveitadas (ex.: resumo financeiro)
-  middlewares/         # errorHandler
+  middlewares/         # autenticar (exige token) e errorHandler
   utils/http.js        # validação, conversão de datas/valores, HttpError
+  utils/escopo.js      # garante que cliente/projeto informado é do escritório logado
+  lib/jwt.js           # gera e valida os tokens de login
   constants/etapas.js  # etapas padrão de todo projeto novo
   lib/prisma.js        # cliente do banco
 ```
+
+## Autenticação e escritórios
+
+- Cada conta pertence a um **escritório**. O cadastro cria o escritório e o primeiro usuário.
+- Login devolve um **token JWT** (válido por 7 dias). As rotas de dados exigem o header `Authorization: Bearer <token>`.
+- Todas as consultas filtram por `escritorioId`: um escritório nunca vê nem altera dados de outro. Ao receber um `clienteId`/`projetoId`, a API confere se ele é do mesmo escritório.
+- Senhas são guardadas com **bcrypt**. Login e cadastro aceitam até 20 tentativas a cada 15 minutos por IP.
 
 ## Endpoints
 
@@ -57,7 +68,15 @@ Base: `http://localhost:3333/api`. Erros retornam `{ "erro": "mensagem" }`.
 
 | Método | Rota | Descrição |
 |---|---|---|
+| POST | `/auth/cadastro` | Cria escritório + usuário `{ nome, email, senha, nomeEscritorio }` → `{ token, usuario }` |
+| POST | `/auth/login` | `{ email, senha }` → `{ token, usuario }` |
+| GET | `/auth/me` | Usuário logado (exige token) |
 | GET | `/health` | Verifica se a API está no ar |
+
+As rotas abaixo exigem token:
+
+| Método | Rota | Descrição |
+|---|---|---|
 | GET | `/dashboard` | Indicadores do painel |
 | GET | `/clientes?busca=` | Lista clientes |
 | GET | `/clientes/:id` | Cliente com seus projetos |
@@ -83,5 +102,6 @@ Base: `http://localhost:3333/api`. Erros retornam `{ "erro": "mensagem" }`.
 
 ## Ainda não implementado
 
-- Login e separação de dados por escritório (multi-tenant)
+- Convidar outros usuários para o mesmo escritório
+- Recuperação de senha por e-mail
 - Testes automatizados

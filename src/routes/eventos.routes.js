@@ -1,5 +1,6 @@
 const { Router } = require('express');
 const prisma = require('../lib/prisma');
+const { garantirDoEscritorio } = require('../utils/escopo');
 const {
   parseId,
   requireFields,
@@ -15,8 +16,8 @@ const incluirRelacoes = {
   projeto: { select: { id: true, nome: true } },
 };
 
-function dadosEvento(body) {
-  return {
+async function dadosEvento(body, escritorioId) {
+  const dados = {
     titulo: body.titulo?.trim(),
     tipo: body.tipo || undefined,
     inicio: toDate(body.inicio),
@@ -26,6 +27,9 @@ function dadosEvento(body) {
     clienteId: toOptionalInt(body.clienteId),
     projetoId: toOptionalInt(body.projetoId),
   };
+  await garantirDoEscritorio('cliente', dados.clienteId, escritorioId);
+  await garantirDoEscritorio('projeto', dados.projetoId, escritorioId);
+  return dados;
 }
 
 // GET /api/eventos?inicio=2026-11-10&fim=2026-11-17
@@ -34,6 +38,7 @@ router.get('/', async (req, res) => {
 
   const eventos = await prisma.evento.findMany({
     where: {
+      escritorioId: req.escritorioId,
       inicio: {
         gte: toDate(inicio) || undefined,
         lt: toDate(fim) || undefined,
@@ -50,7 +55,7 @@ router.get('/', async (req, res) => {
 router.post('/', async (req, res) => {
   requireFields(req.body, ['titulo', 'inicio']);
   const evento = await prisma.evento.create({
-    data: dadosEvento(req.body),
+    data: { ...(await dadosEvento(req.body, req.escritorioId)), escritorioId: req.escritorioId },
     include: incluirRelacoes,
   });
   res.status(201).json(evento);
@@ -60,8 +65,8 @@ router.post('/', async (req, res) => {
 router.put('/:id', async (req, res) => {
   requireFields(req.body, ['titulo', 'inicio']);
   const evento = await prisma.evento.update({
-    where: { id: parseId(req.params.id) },
-    data: dadosEvento(req.body),
+    where: { id: parseId(req.params.id), escritorioId: req.escritorioId },
+    data: await dadosEvento(req.body, req.escritorioId),
     include: incluirRelacoes,
   });
   res.json(evento);
@@ -69,7 +74,9 @@ router.put('/:id', async (req, res) => {
 
 // DELETE /api/eventos/:id
 router.delete('/:id', async (req, res) => {
-  await prisma.evento.delete({ where: { id: parseId(req.params.id) } });
+  await prisma.evento.delete({
+    where: { id: parseId(req.params.id), escritorioId: req.escritorioId },
+  });
   res.status(204).end();
 });
 
