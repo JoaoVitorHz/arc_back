@@ -203,16 +203,19 @@ router.post('/:id/revisao/desfazer', async (req, res) => {
 });
 
 // DELETE /api/etapas/:id/revisao  (apaga a revisão atual e os arquivos dela; a etapa volta para a anterior)
-// Só a mais recente pode ser apagada, para o histórico não ficar com buracos. A Nº 00 (entrega original)
-// não é apagada. Revisão já enviada ao cliente: só administradores.
+// Só a mais recente pode ser apagada, para o histórico não ficar com buracos. Na Nº 00 (entrega original)
+// apaga só os registros de envio/pedido/aprovação: os arquivos continuam na etapa.
+// Revisão já enviada ao cliente: só administradores.
 router.delete('/:id/revisao', async (req, res) => {
   const etapa = await etapaDoEscritorio(req);
   const { numero, registro } = await revisaoAtualDaEtapa(etapa.id);
-  if (numero === 0) {
-    throw new HttpError(400, 'A Revisão Nº 00 é a entrega original e não pode ser apagada. Use "Desfazer" para limpar as marcações.');
-  }
   if (registro?.enviadaEm && req.usuario.papel !== 'ADMIN') {
     throw new HttpError(403, 'Esta revisão já foi enviada ao cliente: só um administrador pode apagá-la');
+  }
+  if (numero === 0) {
+    if (!registro) throw new HttpError(400, 'A Revisão Nº 00 não tem registros para apagar');
+    await prisma.revisaoEtapa.delete({ where: { id: registro.id } });
+    return res.json({ revisaoAtual: 0, arquivosApagados: 0 });
   }
 
   const arquivos = await prisma.arquivo.findMany({
