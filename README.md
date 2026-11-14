@@ -160,7 +160,7 @@ As rotas abaixo exigem token:
 | DELETE | `/tipos-evento/:id` | Exclui; os compromissos desse tipo ficam sem tipo |
 | GET | `/lancamentos?mes=AAAA-MM&tipo=&situacao=pago\|pendente` | Lista lançamentos |
 | GET | `/lancamentos/resumo?mes=AAAA-MM` | Totais do mês |
-| GET | `/lancamentos/fluxo?inicio=AAAA-MM&meses=6` | Fluxo de caixa: entradas, saídas, saldo e saldo acumulado por mês (pelo vencimento) |
+| GET | `/lancamentos/fluxo?inicio=AAAA-MM&meses=6` | Fluxo de caixa (pelo vencimento): `{ meses: [{ mes, entradas, saidas, saldo, acumulado }], despesasPorCategoria: [{ categoria, total }] }` |
 | POST / PUT / DELETE | `/lancamentos[/:id]` | Cria, edita, exclui. No POST, `repeticao: { modo: "parcelar" | "repetir", vezes }` cria as parcelas (valor total dividido, "(1/4)" no nome) ou repete todo mês |
 | PATCH | `/lancamentos/:id/pagamento` | Marca como pago/pendente `{ "pago": true }` |
 

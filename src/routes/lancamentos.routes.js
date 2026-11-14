@@ -97,7 +97,8 @@ router.get('/', async (req, res) => {
   res.json(lancamentos);
 });
 
-// GET /api/lancamentos/fluxo?inicio=2026-11&meses=6  (entradas, saídas e saldo mês a mês)
+// GET /api/lancamentos/fluxo?inicio=2026-11&meses=6
+// -> { meses: [{ mes, entradas, saidas, saldo, acumulado }], despesasPorCategoria: [{ categoria, total }] }
 // Considera todos os lançamentos pelo vencimento (pagos ou não): é a previsão do caixa.
 router.get('/fluxo', async (req, res) => {
   const inicio = req.query.inicio || currentMonth();
@@ -107,7 +108,7 @@ router.get('/fluxo', async (req, res) => {
 
   const lancamentos = await prisma.lancamento.findMany({
     where: { escritorioId: req.escritorioId, vencimento: { gte, lt } },
-    select: { tipo: true, valor: true, vencimento: true },
+    select: { tipo: true, valor: true, vencimento: true, categoria: true },
   });
 
   let acumulado = 0;
@@ -122,8 +123,24 @@ router.get('/fluxo', async (req, res) => {
     return { mes: chave, entradas, saidas, saldo: entradas - saidas, acumulado };
   });
 
-  res.json(fluxo);
+  res.json({ meses: fluxo, despesasPorCategoria: despesasPorCategoria(lancamentos) });
 });
+
+// Total de despesas por categoria no período: as 5 maiores e o resto somado em "Outras"
+function despesasPorCategoria(lancamentos) {
+  const totais = new Map();
+  for (const l of lancamentos) {
+    if (l.tipo !== 'DESPESA') continue;
+    const nome = l.categoria?.trim() || 'Sem categoria';
+    totais.set(nome, (totais.get(nome) || 0) + Number(l.valor));
+  }
+  const ordenadas = [...totais]
+    .map(([categoria, total]) => ({ categoria, total }))
+    .sort((a, b) => b.total - a.total);
+  if (ordenadas.length <= 6) return ordenadas;
+  const outras = ordenadas.slice(5).reduce((t, c) => t + c.total, 0);
+  return [...ordenadas.slice(0, 5), { categoria: 'Outras', total: outras }];
+}
 
 // GET /api/lancamentos/resumo?mes=2026-11
 router.get('/resumo', async (req, res) => {
