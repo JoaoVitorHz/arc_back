@@ -19,33 +19,75 @@ model Escritorio {
   criadoEm     DateTime @default(now())
   atualizadoEm DateTime @updatedAt
 
-  usuarios    Usuario[]
+  // Encerrado pelo administrador: ninguém acessa e os dados podem ser restaurados por
+  // quem encerrou em até 30 dias (a exclusão definitiva ainda não é automática)
+  encerradoEm    DateTime?
+  encerradoPorId Int?
+  encerradoPor   Usuario?  @relation("EscritoriosEncerrados", fields: [encerradoPorId], references: [id], onDelete: SetNull)
+
+  usuarios    Usuario[]    @relation("MembrosDoEscritorio")
+  convites    Convite[]
   clientes    Cliente[]
   projetos    Projeto[]
   eventos     Evento[]
   tiposEvento TipoEvento[]
   lancamentos Lancamento[]
 
+  @@index([encerradoPorId])
   @@map("escritorios")
 }
 
+enum PapelUsuario {
+  ADMIN // gerencia a equipe e o escritório
+  MEMBRO // usa o sistema normalmente
+}
+
 model Usuario {
-  id                Int       @id @default(autoincrement())
+  id                Int          @id @default(autoincrement())
   nome              String
-  email             String    @unique
+  email             String       @unique
   senhaHash         String
+  papel             PapelUsuario @default(ADMIN)
+  // Conta criada pelo administrador com senha provisória: precisa criar a própria senha ao entrar
+  deveTrocarSenha   Boolean      @default(false)
   // Tokens de login emitidos antes desta data deixam de valer (preenchido ao trocar a senha)
   tokensValidosApos DateTime?
-  criadoEm          DateTime  @default(now())
-  atualizadoEm      DateTime  @updatedAt
+  criadoEm          DateTime     @default(now())
+  atualizadoEm      DateTime     @updatedAt
 
-  escritorioId Int
-  escritorio   Escritorio @relation(fields: [escritorioId], references: [id], onDelete: Cascade)
+  // Vazio = a pessoa não faz parte de nenhum escritório (saiu, foi removida ou encerrou o dela)
+  escritorioId Int?
+  escritorio   Escritorio? @relation("MembrosDoEscritorio", fields: [escritorioId], references: [id], onDelete: SetNull)
 
-  tokensRedefinicao TokenRedefinicaoSenha[]
+  tokensRedefinicao     TokenRedefinicaoSenha[]
+  convitesEnviados      Convite[]               @relation("ConvitesEnviados")
+  escritoriosEncerrados Escritorio[]            @relation("EscritoriosEncerrados")
 
   @@index([escritorioId])
   @@map("usuarios")
+}
+
+// Convite para entrar num escritório. Como na redefinição de senha, guardamos só o hash
+// do token do link. Vale por 7 dias e só uma vez.
+model Convite {
+  id        Int          @id @default(autoincrement())
+  nome      String
+  email     String
+  papel     PapelUsuario @default(MEMBRO)
+  tokenHash String       @unique
+  expiraEm  DateTime
+  aceitoEm  DateTime?
+  criadoEm  DateTime     @default(now())
+
+  escritorioId   Int
+  escritorio     Escritorio @relation(fields: [escritorioId], references: [id], onDelete: Cascade)
+  convidadoPorId Int?
+  convidadoPor   Usuario?   @relation("ConvitesEnviados", fields: [convidadoPorId], references: [id], onDelete: SetNull)
+
+  @@index([escritorioId])
+  @@index([email])
+  @@index([convidadoPorId])
+  @@map("convites")
 }
 
 // Links de "esqueci minha senha". Guardamos só o hash do token: quem ler o banco

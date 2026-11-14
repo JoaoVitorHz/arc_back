@@ -39,4 +39,12 @@ async function enviarEmail({ para, assunto, texto, html }) {
   });
 }
 
-module.exports = { enviarEmail };
+// Escapa texto vindo do usuário (nomes, nome do escritório) antes de colocar no HTML do e-mail
+function escaparHtml(texto) {
+  return String(texto ?? '').replace(
+    /[&<>"']/g,
+    (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]
+  );
+}
+
+module.exports = { enviarEmail, escaparHtml, smtpConfigurado };

@@ -1,53 +1,28 @@
-const crypto = require('crypto');
 const { Router } = require('express');
 const bcrypt = require('bcryptjs');
-const { rateLimit } = require('express-rate-limit');
 const prisma = require('../lib/prisma');
-const { gerarToken, agoraEmSegundos } = require('../lib/jwt');
-const { enviarEmail } = require('../lib/email');
+const { agoraEmSegundos } = require('../lib/jwt');
+const { enviarEmail, escaparHtml } = require('../lib/email');
 const { TIPOS_EVENTO_PADRAO } = require('../constants/tiposEvento');
 const autenticar = require('../middlewares/autenticar');
 const { HttpError, requireFields } = require('../utils/http');
+const {
+  SALT_ROUNDS,
+  limiteTentativas,
+  selecaoUsuario,
+  normalizarEmail,
+  validarEmail,
+  validarSenha,
+  respostaSessao,
+  gerarTokenDeLink,
+  hashToken,
+  urlDoApp,
+} = require('../utils/sessao');
 
 const router = Router();
 
-const SALT_ROUNDS = 10;
-const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 // Hash usado quando o e-mail não existe, para o login levar o mesmo tempo nos dois casos
 const HASH_FALSO = bcrypt.hashSync('senha-inexistente', SALT_ROUNDS);
-
-// Limita tentativas de login/cadastro por IP (protege contra força bruta)
-const limiteTentativas = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  limit: 20,
-  standardHeaders: 'draft-8',
-  legacyHeaders: false,
-  message: { erro: 'Muitas tentativas. Aguarde alguns minutos e tente novamente.' },
-});
-
-const selecaoUsuario = {
-  id: true,
-  nome: true,
-  email: true,
-  escritorioId: true,
-  escritorio: { select: { id: true, nome: true } },
-};
-
-function normalizarEmail(email) {
-  return String(email).trim().toLowerCase();
-}
-
-function validarSenha(senha) {
-  const tamanho = Buffer.byteLength(String(senha));
-  // bcrypt ignora o que passa de 72 bytes
-  if (tamanho < 8 || tamanho > 72) {
-    throw new HttpError(400, 'A senha deve ter entre 8 e 72 caracteres');
-  }
-}
-
-function respostaSessao(usuario) {
-  return { token: gerarToken(usuario), usuario };
-}
 
 // POST /api/auth/cadastro  { nome, email, senha, nomeEscritorio }
 // Cria o escritório, o primeiro usuário dele e os tipos de compromisso padrão
@@ -59,7 +34,7 @@ router.post('/cadastro', limiteTentativas, async (req, res) => {
   const email = normalizarEmail(req.body.email);
 
   if (!nome || !nomeEscritorio) throw new HttpError(400, 'Preencha seu nome e o nome do escritório');
-  if (!EMAIL_REGEX.test(email)) throw new HttpError(400, 'E-mail inválido');
+  validarEmail(email);
   validarSenha(req.body.senha);
 
   const existente = await prisma.usuario.findUnique({ where: { email }, select: { id: true } });
@@ -113,9 +88,6 @@ const VALIDADE_LINK_MINUTOS = 60;
 const MENSAGEM_ESQUECI =
   'Se existir uma conta com esse e-mail, enviamos um link para redefinir a senha. Confira também a caixa de spam.';
 
-const hashToken = (token) => crypto.createHash('sha256').update(String(token)).digest('hex');
-const urlDoApp = () => (process.env.APP_URL || process.env.CORS_ORIGIN || 'http://localhost:3000').replace(/\/$/, '');
-
 function emailRedefinicao(nome, link) {
   const texto = [
     `Olá, ${nome}!`,
@@ -130,7 +102,7 @@ function emailRedefinicao(nome, link) {
 
   const html = `
     <div style="font-family: Arial, sans-serif; max-width: 480px; color: #18181b">
-      <p>Olá, ${nome}!</p>
+      <p>Olá, ${escaparHtml(nome)}!</p>
       <p>Recebemos um pedido para redefinir a senha da sua conta no <strong>ArcGestão</strong>.</p>
       <p>
         <a href="${link}" style="display: inline-block; background: #25665e; color: #fff; padding: 10px 18px; border-radius: 8px; text-decoration: none">
@@ -156,7 +128,7 @@ router.post('/esqueci-senha', limiteTentativas, async (req, res) => {
   });
 
   if (usuario) {
-    const token = crypto.randomBytes(32).toString('hex');
+    const token = gerarTokenDeLink();
     await prisma.$transaction([
       // só o link mais recente vale
       prisma.tokenRedefinicaoSenha.deleteMany({ where: { usuarioId: usuario.id } }),
@@ -204,7 +176,7 @@ router.post('/redefinir-senha', limiteTentativas, async (req, res) => {
     prisma.usuario.update({
       where: { id: registro.usuarioId },
       // encerra as sessões abertas em outros aparelhos
-      data: { senhaHash, tokensValidosApos: agoraEmSegundos() },
+      data: { senhaHash, tokensValidosApos: agoraEmSegundos(), deveTrocarSenha: false },
       select: selecaoUsuario,
     }),
     prisma.tokenRedefinicaoSenha.deleteMany({ where: { usuarioId: registro.usuarioId } }),
@@ -232,7 +204,7 @@ router.put('/perfil', autenticar, async (req, res) => {
   const nome = String(req.body.nome).trim();
   const email = normalizarEmail(req.body.email);
   if (!nome) throw new HttpError(400, 'Informe seu nome');
-  if (!EMAIL_REGEX.test(email)) throw new HttpError(400, 'E-mail inválido');
+  validarEmail(email);
 
   const atual = await prisma.usuario.findUniqueOrThrow({ where: { id: req.usuario.id }, select: { email: true } });
   if (email !== atual.email) {
@@ -264,6 +236,7 @@ router.put('/senha', autenticar, async (req, res) => {
     data: {
       senhaHash: await bcrypt.hash(String(req.body.novaSenha), SALT_ROUNDS),
       tokensValidosApos: agoraEmSegundos(),
+      deveTrocarSenha: false,
     },
     select: selecaoUsuario,
   });

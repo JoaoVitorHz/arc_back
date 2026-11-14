@@ -30,6 +30,7 @@ async function apagarEscritorios(ids) {
   await prisma.tipoEvento.deleteMany({ where });
   await prisma.projeto.deleteMany({ where }); // etapas vão junto (cascade)
   await prisma.cliente.deleteMany({ where });
+  await prisma.convite.deleteMany({ where });
   await prisma.usuario.deleteMany({ where });
   await prisma.escritorio.deleteMany({ where: { id: { in: ids } } });
 }
@@ -54,12 +55,17 @@ async function criarProjeto({ etapasConcluidas, ...dados }) {
 }
 
 async function main() {
-  // Remove a conta demo anterior e escritórios sem nenhum usuário (ex.: dados de antes do login)
-  const antigos = await prisma.escritorio.findMany({
-    where: { OR: [{ usuarios: { some: { email: DEMO.email } } }, { usuarios: { none: {} } }] },
-    select: { id: true },
-  });
-  await apagarEscritorios(antigos.map((e) => e.id));
+  // Remove a conta demo anterior: o escritório dela (ativo ou encerrado por ela) e o próprio usuário.
+  // Escritórios de outras contas não são tocados.
+  const demoAntigo = await prisma.usuario.findUnique({ where: { email: DEMO.email }, select: { id: true } });
+  if (demoAntigo) {
+    const antigos = await prisma.escritorio.findMany({
+      where: { OR: [{ usuarios: { some: { id: demoAntigo.id } } }, { encerradoPorId: demoAntigo.id }] },
+      select: { id: true },
+    });
+    await apagarEscritorios(antigos.map((e) => e.id));
+    await prisma.usuario.deleteMany({ where: { id: demoAntigo.id } });
+  }
 
   const escritorio = await prisma.escritorio.create({
     data: {

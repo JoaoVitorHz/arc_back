@@ -46,8 +46,9 @@ src/
   server.js            # inicia o servidor
   app.js               # Express, CORS, rotas e tratamento de erros
   routes/              # um arquivo por recurso
-  services/            # regras reaproveitadas (ex.: resumo financeiro)
-  middlewares/         # autenticar (exige token) e errorHandler
+  services/            # regras reaproveitadas (resumo financeiro, regras de equipe)
+  middlewares/         # autenticar (token), permissoes (exigirEscritorio, exigirAdmin), errorHandler
+  utils/sessao.js      # senha, sessão, tokens de link e limite de tentativas
   utils/http.js        # validação, conversão de datas/valores, HttpError
   utils/escopo.js      # garante que cliente/projeto informado é do escritório logado
   lib/jwt.js           # gera e valida os tokens de login
@@ -62,7 +63,16 @@ src/
 - Cada conta pertence a um **escritório**. O cadastro cria o escritório, o primeiro usuário e os tipos de compromisso padrão (Reunião, Visita técnica, Visita de obra, Entrega, Outro).
 - Login devolve um **token JWT** (válido por 7 dias). As rotas de dados exigem o header `Authorization: Bearer <token>`.
 - Todas as consultas filtram por `escritorioId`: um escritório nunca vê nem altera dados de outro. Ao receber um `clienteId`/`projetoId`, a API confere se ele é do mesmo escritório.
-- Senhas são guardadas com **bcrypt**. Login, cadastro e recuperação de senha aceitam até 20 tentativas a cada 15 minutos por IP.
+- Senhas são guardadas com **bcrypt**. Login, cadastro, recuperação de senha e aceite de convite aceitam até 20 tentativas **com erro** a cada 15 minutos por IP (as que dão certo não contam, porque a equipe de um escritório costuma sair pelo mesmo IP).
+
+## Equipe
+
+- **Papéis:** `ADMIN` (gerencia equipe e escritório) e `MEMBRO` (usa o sistema). Quem cria a conta é administrador. Rotas de gestão usam o middleware `exigirAdmin`.
+- **Entrar na equipe:** por **convite** (link de 7 dias, uso único, só o hash fica no banco) ou pela **conta criada pelo administrador** (senha provisória; `deveTrocarSenha` obriga a criar a própria no primeiro acesso).
+- **Aceitar convite tendo conta:** sem escritório → entra; escritório vazio (só a pessoa e nenhum dado) → ele é apagado e a pessoa entra; com dados → precisa **encerrar**; com equipe → precisa **sair**. Regras em `services/equipe.service.js`.
+- **Sair:** qualquer pessoa, menos o último administrador. **Remover:** o administrador tira alguém da equipe (a conta continua existindo).
+- **Encerrar escritório:** só o administrador e só quando está sozinho, confirmando com o nome. O escritório fica desativado (`encerradoEm`) e quem encerrou pode **restaurar em até 30 dias**.
+- **Sem escritório** (`usuarios.escritorioId` vazio): a pessoa só acessa `/auth`, `/convites` e criar/restaurar escritório; as rotas de dados respondem `403` com `codigo: "SEM_ESCRITORIO"` (middleware `exigirEscritorio`).
 - **Recuperação de senha:** o link vale 1 hora e uma única vez; o banco guarda só o hash do token. Trocar a senha (pelo link ou no perfil) encerra as sessões abertas em outros aparelhos (`tokensValidosApos`).
 
 ### E-mail
@@ -82,6 +92,10 @@ Base: `http://localhost:3333/api`. Erros retornam `{ "erro": "mensagem" }`.
 | POST | `/auth/redefinir-senha` | `{ token, senha }` → troca a senha e devolve `{ token, usuario }` |
 | PUT | `/auth/perfil` | `{ nome, email, senhaAtual? }` (senha atual obrigatória para trocar o e-mail) |
 | PUT | `/auth/senha` | `{ senhaAtual, novaSenha }` → devolve um token novo |
+| GET | `/convites/token/:token` | Dados do convite (tela do link) |
+| POST | `/convites/token/:token/aceitar` | Sem conta `{ nome, senha }` / com conta `{ senha }` → `{ token, usuario }` |
+| GET | `/convites/meus` | Convites pendentes para o meu e-mail (logado) |
+| POST | `/convites/:id/aceitar` | Aceitar estando logado |
 | GET | `/health` | Verifica se a API está no ar |
 
 As rotas abaixo exigem token:
@@ -89,7 +103,19 @@ As rotas abaixo exigem token:
 | Método | Rota | Descrição |
 |---|---|---|
 | GET | `/dashboard` | Indicadores do painel |
-| GET / PUT | `/escritorio` | Dados do escritório logado / renomear `{ nome }` |
+| GET | `/escritorio` | Escritório atual com tamanho da equipe e se tem dados |
+| PUT | `/escritorio` | Renomear `{ nome }` (admin) |
+| POST | `/escritorio/encerrar` | `{ confirmacao: "<nome>" }` (admin, sozinho no escritório) |
+| POST | `/escritorio` | Criar meu escritório `{ nome }` (só sem escritório) |
+| GET | `/escritorio/encerrados` | Escritórios que eu encerrei e ainda posso restaurar |
+| POST | `/escritorio/:id/restaurar` | Restaurar (só sem escritório, até 30 dias) |
+| GET | `/equipe` | Membros (todos) e convites pendentes (admin) |
+| POST | `/equipe/sair` | Sair do escritório |
+| POST | `/equipe/convites` | `{ nome, email, papel }` → `{ convite, link, emailEnviado, contaExiste }` (admin) |
+| POST | `/equipe/convites/:id/novo-link` | Gera outro link e reenvia o e-mail (admin) |
+| DELETE | `/equipe/convites/:id` | Cancela o convite (admin) |
+| POST | `/equipe/membros` | Cria conta com senha provisória `{ nome, email, papel, senha }` (admin) |
+| PATCH / DELETE | `/equipe/membros/:id` | Troca o papel `{ papel }` / remove da equipe (admin) |
 | GET | `/clientes?busca=` | Lista clientes |
 | GET | `/clientes/:id` | Cliente com projetos (com progresso), compromissos e resumo financeiro |
 | POST / PUT / DELETE | `/clientes[/:id]` | Cria, edita, exclui (bloqueia se tiver projetos) |
@@ -117,5 +143,5 @@ As rotas abaixo exigem token:
 
 ## Ainda não implementado
 
-- Convidar outros usuários para o mesmo escritório
+- Exclusão automática dos escritórios encerrados há mais de 30 dias (hoje eles só ficam desativados)
 - Testes automatizados

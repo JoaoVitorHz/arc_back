@@ -4,7 +4,7 @@ const { HttpError } = require('../utils/http');
 // eslint-disable-next-line no-unused-vars
 function errorHandler(err, req, res, next) {
   if (err instanceof HttpError) {
-    return res.status(err.status).json({ erro: err.message });
+    return res.status(err.status).json({ erro: err.message, codigo: err.codigo });
   }
 
   if (err instanceof Prisma.PrismaClientKnownRequestError) {

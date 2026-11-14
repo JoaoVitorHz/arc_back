@@ -20,7 +20,7 @@ async function autenticar(req, res, next) {
   // Confere no banco: um usuário removido perde o acesso mesmo com token válido
   const usuario = await prisma.usuario.findUnique({
     where: { id: dados.usuarioId },
-    select: { id: true, escritorioId: true, tokensValidosApos: true },
+    select: { id: true, escritorioId: true, papel: true, tokensValidosApos: true },
   });
   // Token emitido antes da última troca de senha: sessão encerrada
   const revogado = usuario?.tokensValidosApos && dados.emitidoEm * 1000 < usuario.tokensValidosApos.getTime();
@@ -28,7 +28,8 @@ async function autenticar(req, res, next) {
     throw new HttpError(401, 'Sessão expirada. Faça login novamente.');
   }
 
-  req.usuario = { id: usuario.id, escritorioId: usuario.escritorioId };
+  // escritorioId pode ser null (pessoa sem escritório): as rotas de dados usam exigirEscritorio
+  req.usuario = { id: usuario.id, escritorioId: usuario.escritorioId, papel: usuario.papel };
   req.escritorioId = usuario.escritorioId;
   next();
 }
