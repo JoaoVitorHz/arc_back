@@ -66,6 +66,9 @@ model Usuario {
   arquivosEnviados      Arquivo[]
   etapasEditadas        Etapa[]                 @relation("AnotacaoEditadaPor")
   etapasResponsavel     Etapa[]                 @relation("ResponsavelDaEtapa")
+  revisoesEnviadas      RevisaoEtapa[]          @relation("RevisaoEnviadaPor")
+  revisoesComPedido     RevisaoEtapa[]          @relation("RevisaoPedidoPor")
+  revisoesAprovadas     RevisaoEtapa[]          @relation("RevisaoAprovadaPor")
 
   @@index([escritorioId])
   @@map("usuarios")
@@ -201,15 +204,58 @@ model Etapa {
   criadoEm      DateTime @default(now())
   atualizadoEm  DateTime @updatedAt
 
+  // Revisões com o cliente (opcional): número da revisão em andamento (R00, R01...) e quantas o contrato prevê
+  revisaoAtual      Int  @default(0)
+  revisoesPrevistas Int?
+
   projetoId Int
   projeto   Projeto @relation(fields: [projetoId], references: [id], onDelete: Cascade)
 
   arquivos Arquivo[]
+  revisoes RevisaoEtapa[]
 
   @@index([projetoId])
   @@index([descricaoEditadaPorId])
   @@index([responsavelId])
   @@map("etapas")
+}
+
+// Rodada de revisão de uma etapa (R00 = entrega original, R01 = primeira alteração...).
+// Opcional: só é criada quando alguém marca a revisão como enviada ao cliente.
+enum MeioEnvio {
+  WHATSAPP
+  EMAIL
+  REUNIAO
+  OUTRO
+}
+
+model RevisaoEtapa {
+  id                  Int        @id @default(autoincrement())
+  numero              Int
+  enviadaEm           DateTime?  @db.Date
+  meioEnvio           MeioEnvio?
+  observacaoEnvio     String?    @db.Text
+  pedidoAlteracao     String?    @db.Text // o que o cliente pediu para mudar
+  pedidoEm            DateTime?  @db.Date
+  aprovadaEm          DateTime?  @db.Date
+  observacaoAprovacao String?    @db.Text
+  criadoEm            DateTime   @default(now())
+  atualizadoEm        DateTime   @updatedAt
+
+  etapaId       Int
+  etapa         Etapa    @relation(fields: [etapaId], references: [id], onDelete: Cascade)
+  enviadaPorId  Int?
+  enviadaPor    Usuario? @relation("RevisaoEnviadaPor", fields: [enviadaPorId], references: [id], onDelete: SetNull)
+  pedidoPorId   Int?
+  pedidoPor     Usuario? @relation("RevisaoPedidoPor", fields: [pedidoPorId], references: [id], onDelete: SetNull)
+  aprovadaPorId Int?
+  aprovadaPor   Usuario? @relation("RevisaoAprovadaPor", fields: [aprovadaPorId], references: [id], onDelete: SetNull)
+
+  @@unique([etapaId, numero])
+  @@index([enviadaPorId])
+  @@index([pedidoPorId])
+  @@index([aprovadaPorId])
+  @@map("revisoes_etapa")
 }
 
 // ---------- Arquivos dos projetos ----------
@@ -222,14 +268,15 @@ enum TipoArquivo {
 // Arquivo ou link anexado a um projeto, dentro de uma etapa ou na pasta "Geral do projeto" (etapaId vazio).
 // Apagar a etapa ou o projeto apaga os arquivos junto (as rotas também removem do armazenamento).
 model Arquivo {
-  id       Int         @id @default(autoincrement())
-  tipo     TipoArquivo @default(ARQUIVO)
-  nome     String // nome mostrado (o original do computador, ou o título do link)
-  mimeType String?
-  tamanho  Int? // bytes
-  chave    String? // onde está no armazenamento (só ARQUIVO)
-  url      String?     @db.Text // só LINK
-  criadoEm DateTime    @default(now())
+  id            Int         @id @default(autoincrement())
+  tipo          TipoArquivo @default(ARQUIVO)
+  nome          String // nome mostrado (o original do computador, ou o título do link)
+  mimeType      String?
+  tamanho       Int? // bytes
+  chave         String? // onde está no armazenamento (só ARQUIVO)
+  url           String?     @db.Text // só LINK
+  revisaoNumero Int         @default(0) // revisão da etapa em que o arquivo foi anexado (R00, R01...)
+  criadoEm      DateTime    @default(now())
 
   escritorioId Int
   escritorio   Escritorio @relation(fields: [escritorioId], references: [id], onDelete: Cascade)

@@ -83,6 +83,14 @@ router.get('/:id', async (req, res) => {
         include: {
           descricaoEditadaPor: { select: { id: true, nome: true } },
           responsavel: { select: { id: true, nome: true } },
+          revisoes: {
+            orderBy: { numero: 'asc' },
+            include: {
+              enviadaPor: { select: { nome: true } },
+              pedidoPor: { select: { nome: true } },
+              aprovadaPor: { select: { nome: true } },
+            },
+          },
         },
       },
       lancamentos: { orderBy: { vencimento: 'asc' } },

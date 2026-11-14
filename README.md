@@ -76,6 +76,15 @@ uploads/               # arquivos enviados (fora do Git)
 - `lib/armazenamento.js` concentra o acesso ao disco (guardar, ler, apagar): para usar Cloudflare R2/S3 em produção, só ele muda.
 - ⚠️ Faça backup da pasta `uploads/` junto com o banco.
 
+## Revisões com o cliente (opcional)
+
+- Cada etapa tem rodadas de revisão: **R00** (entrega original), R01, R02... Tudo é opcional: sem marcar nenhum envio, a etapa fica na R00 e funciona como antes.
+- `POST /etapas/:id/revisao/enviar` marca a revisão atual como enviada (data, meio, observação). Depois disso, **anexar arquivos na etapa abre a próxima revisão sozinho**; `POST /etapas/:id/revisao/nova` abre manualmente.
+- `pedido` registra o que o cliente pediu; `aprovar` marca como aprovada; `desfazer` desfaz a última marcação (aprovação → pedido → envio → revisão aberta sem arquivos).
+- `revisoesPrevistas` (PATCH da etapa) habilita o contador "N de M"; revisões além do previsto podem ser cobradas como extra.
+- Arquivos de uma revisão já enviada são o que o cliente recebeu: não podem ser movidos e só um administrador pode apagá-los.
+- O upload responde `{ arquivos, revisao }` (`revisao.nova` indica que uma revisão foi aberta).
+
 ## Equipe
 
 - **Papéis:** `ADMIN` (gerencia equipe e escritório) e `MEMBRO` (usa o sistema). Quem cria a conta é administrador. Rotas de gestão usam o middleware `exigirAdmin`.

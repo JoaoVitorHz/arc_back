@@ -6,6 +6,7 @@ const multer = require('multer');
 const prisma = require('../lib/prisma');
 const armazenamento = require('../lib/armazenamento');
 const { garantirDoEscritorio } = require('../utils/escopo');
+const { revisaoParaNovoArquivo, revisaoFoiEnviada } = require('../services/revisoes.service');
 const { HttpError, parseId, requireFields, toOptionalInt } = require('../utils/http');
 
 const router = Router();
@@ -30,6 +31,7 @@ const selecaoArquivo = {
   url: true,
   criadoEm: true,
   etapaId: true,
+  revisaoNumero: true,
   enviadoPorId: true,
   enviadoPor: { select: { id: true, nome: true } },
 };
@@ -109,6 +111,7 @@ router.post(
     try {
       if (!enviados.length) throw new HttpError(400, 'Selecione ao menos um arquivo');
       const etapaId = await etapaDoProjeto(req.body.etapaId, req.projetoId);
+      const revisao = etapaId ? await revisaoParaNovoArquivo(etapaId) : null;
 
       const criados = [];
       for (const enviado of enviados) {
@@ -128,6 +131,7 @@ router.post(
                 escritorioId: req.escritorioId,
                 projetoId: req.projetoId,
                 etapaId,
+                revisaoNumero: revisao?.numero ?? 0,
                 enviadoPorId: req.usuario.id,
               },
               select: selecaoArquivo,
@@ -138,7 +142,7 @@ router.post(
           throw erro;
         }
       }
-      res.status(201).json(criados);
+      res.status(201).json({ arquivos: criados, revisao });
     } finally {
       // temporários que não chegaram a ser guardados (erro no meio do caminho)
       await Promise.all(enviados.filter((a) => !a.guardado).map((a) => fsp.rm(a.path, { force: true })));
@@ -159,6 +163,9 @@ router.post('/projetos/:id/links', async (req, res) => {
   }
   if (!['http:', 'https:'].includes(url.protocol)) throw new HttpError(400, 'O link precisa começar com http:// ou https://');
 
+  const etapaId = await etapaDoProjeto(req.body.etapaId, projetoId);
+  const revisao = etapaId ? await revisaoParaNovoArquivo(etapaId) : null;
+
   const arquivo = await prisma.arquivo.create({
     data: {
       tipo: 'LINK',
@@ -166,12 +173,13 @@ router.post('/projetos/:id/links', async (req, res) => {
       url: url.toString(),
       escritorioId: req.escritorioId,
       projetoId,
-      etapaId: await etapaDoProjeto(req.body.etapaId, projetoId),
+      etapaId,
+      revisaoNumero: revisao?.numero ?? 0,
       enviadoPorId: req.usuario.id,
     },
     select: selecaoArquivo,
   });
-  res.status(201).json(arquivo);
+  res.status(201).json({ arquivo, revisao });
 });
 
 // GET /api/arquivos/:id/conteudo?visualizar=1  (baixa; com visualizar=1, imagens/PDF abrem no navegador)
@@ -198,7 +206,16 @@ router.get('/arquivos/:id/conteudo', async (req, res) => {
 router.patch('/arquivos/:id', async (req, res) => {
   const arquivo = await arquivoDoEscritorio(req);
   const data = {};
-  if (req.body.etapaId !== undefined) data.etapaId = await etapaDoProjeto(req.body.etapaId, arquivo.projetoId);
+  if (req.body.etapaId !== undefined) {
+    const destino = await etapaDoProjeto(req.body.etapaId, arquivo.projetoId);
+    if (destino !== arquivo.etapaId) {
+      if (await revisaoFoiEnviada(arquivo.etapaId, arquivo.revisaoNumero)) {
+        throw new HttpError(409, 'Este arquivo faz parte de uma revisão já enviada ao cliente e não pode ser movido');
+      }
+      data.etapaId = destino;
+      data.revisaoNumero = destino ? (await revisaoParaNovoArquivo(destino)).numero : 0;
+    }
+  }
   if (req.body.nome !== undefined) {
     if (!String(req.body.nome).trim()) throw new HttpError(400, 'O nome não pode ficar vazio');
     data.nome = limitarNome(req.body.nome);
@@ -213,6 +230,9 @@ router.delete('/arquivos/:id', async (req, res) => {
   const arquivo = await arquivoDoEscritorio(req);
   if (arquivo.enviadoPorId !== req.usuario.id && req.usuario.papel !== 'ADMIN') {
     throw new HttpError(403, 'Só quem enviou o arquivo ou um administrador pode apagá-lo');
+  }
+  if (req.usuario.papel !== 'ADMIN' && (await revisaoFoiEnviada(arquivo.etapaId, arquivo.revisaoNumero))) {
+    throw new HttpError(403, 'Este arquivo faz parte de uma revisão já enviada ao cliente: só um administrador pode apagá-lo');
   }
 
   await prisma.arquivo.delete({ where: { id: arquivo.id } });
