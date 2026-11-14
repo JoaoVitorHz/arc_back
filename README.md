@@ -135,7 +135,7 @@ As rotas abaixo exigem token:
 | POST | `/projetos` | Cria projeto **com as etapas padrão** |
 | PUT / DELETE | `/projetos/:id` | Edita / exclui |
 | POST | `/projetos/:id/etapas` | Adiciona etapa ao final |
-| PATCH / DELETE | `/etapas/:id` | Altera status, nome, data prevista / remove (com os arquivos dela) |
+| PATCH / DELETE | `/etapas/:id` | Altera status, nome, data prevista, anotações `{ descricao }` (até 5000 caracteres; guarda quem editou e quando) / remove (com os arquivos dela) |
 | GET | `/projetos/:id/arquivos` | Arquivos e links do projeto |
 | POST | `/projetos/:id/arquivos` | Envio multipart: campo `arquivos` (até 10) + `etapaId` opcional |
 | POST | `/projetos/:id/links` | `{ nome, url, etapaId? }` |

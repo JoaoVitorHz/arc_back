@@ -64,6 +64,7 @@ model Usuario {
   convitesEnviados      Convite[]               @relation("ConvitesEnviados")
   escritoriosEncerrados Escritorio[]            @relation("EscritoriosEncerrados")
   arquivosEnviados      Arquivo[]
+  etapasEditadas        Etapa[]
 
   @@index([escritorioId])
   @@map("usuarios")
@@ -182,13 +183,18 @@ enum StatusEtapa {
 }
 
 model Etapa {
-  id           Int         @id @default(autoincrement())
-  nome         String
-  ordem        Int
-  status       StatusEtapa @default(NAO_INICIADA)
-  dataPrevista DateTime?   @db.Date
-  criadoEm     DateTime    @default(now())
-  atualizadoEm DateTime    @updatedAt
+  id                    Int         @id @default(autoincrement())
+  nome                  String
+  ordem                 Int
+  status                StatusEtapa @default(NAO_INICIADA)
+  dataPrevista          DateTime?   @db.Date
+  // Anotações livres da etapa (avisos e lembretes para a equipe); qualquer membro edita
+  descricao             String?     @db.Text
+  descricaoEditadaEm    DateTime?
+  descricaoEditadaPorId Int?
+  descricaoEditadaPor   Usuario?    @relation(fields: [descricaoEditadaPorId], references: [id], onDelete: SetNull)
+  criadoEm              DateTime    @default(now())
+  atualizadoEm          DateTime    @updatedAt
 
   projetoId Int
   projeto   Projeto @relation(fields: [projetoId], references: [id], onDelete: Cascade)
@@ -196,6 +202,7 @@ model Etapa {
   arquivos Arquivo[]
 
   @@index([projetoId])
+  @@index([descricaoEditadaPorId])
   @@map("etapas")
 }
 

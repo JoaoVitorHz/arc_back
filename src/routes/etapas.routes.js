@@ -6,6 +6,7 @@ const { HttpError, parseId, toDate } = require('../utils/http');
 const router = Router();
 
 const STATUS_VALIDOS = ['NAO_INICIADA', 'EM_ANDAMENTO', 'CONCLUIDA'];
+const TAMANHO_MAXIMO_DESCRICAO = 5000;
 
 // A etapa pertence ao escritório pelo projeto dela
 const daEtapa = (req) => ({
@@ -15,7 +16,7 @@ const daEtapa = (req) => ({
 
 // PATCH /api/etapas/:id  (atualiza só os campos enviados)
 router.patch('/:id', async (req, res) => {
-  const { nome, status, dataPrevista } = req.body;
+  const { nome, status, dataPrevista, descricao } = req.body;
   const data = {};
 
   if (nome !== undefined) {
@@ -28,6 +29,16 @@ router.patch('/:id', async (req, res) => {
   }
   if (dataPrevista !== undefined) {
     data.dataPrevista = toDate(dataPrevista);
+  }
+  // Anotações: qualquer membro pode escrever; guarda quem editou por último e quando
+  if (descricao !== undefined) {
+    const texto = String(descricao ?? '').trim();
+    if (texto.length > TAMANHO_MAXIMO_DESCRICAO) {
+      throw new HttpError(400, `As anotações podem ter no máximo ${TAMANHO_MAXIMO_DESCRICAO} caracteres`);
+    }
+    data.descricao = texto || null;
+    data.descricaoEditadaEm = new Date();
+    data.descricaoEditadaPorId = req.usuario.id;
   }
 
   const etapa = await prisma.etapa.update({ where: daEtapa(req), data });

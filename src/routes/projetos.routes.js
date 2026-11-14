@@ -69,7 +69,10 @@ router.get('/:id', async (req, res) => {
     where: { id: parseId(req.params.id), escritorioId: req.escritorioId },
     include: {
       cliente: true,
-      etapas: { orderBy: { ordem: 'asc' } },
+      etapas: {
+        orderBy: { ordem: 'asc' },
+        include: { descricaoEditadaPor: { select: { id: true, nome: true } } },
+      },
       lancamentos: { orderBy: { vencimento: 'asc' } },
       eventos: {
         orderBy: { inicio: 'asc' },
