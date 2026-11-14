@@ -7,6 +7,16 @@ function errorHandler(err, req, res, next) {
     return res.status(err.status).json({ erro: err.message, codigo: err.codigo });
   }
 
+  if (err.name === 'MulterError') {
+    const mensagens = {
+      LIMIT_FILE_SIZE: 'O arquivo passa do limite de 50 MB. Para arquivos maiores, adicione um link (Drive, Dropbox...).',
+      LIMIT_FILE_COUNT: 'Envie no máximo 10 arquivos por vez.',
+      LIMIT_UNEXPECTED_FILE: 'Campo de arquivo inesperado.',
+    };
+    const status = err.code === 'LIMIT_FILE_SIZE' ? 413 : 400;
+    return res.status(status).json({ erro: mensagens[err.code] || 'Não foi possível receber o arquivo.' });
+  }
+
   if (err instanceof Prisma.PrismaClientKnownRequestError) {
     if (err.code === 'P2025') {
       return res.status(404).json({ erro: 'Registro não encontrado' });

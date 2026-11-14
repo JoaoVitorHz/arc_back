@@ -1,5 +1,6 @@
 const { Router } = require('express');
 const prisma = require('../lib/prisma');
+const armazenamento = require('../lib/armazenamento');
 const { HttpError, parseId, toDate } = require('../utils/http');
 
 const router = Router();
@@ -34,9 +35,15 @@ router.patch('/:id', async (req, res) => {
   res.json(etapa);
 });
 
-// DELETE /api/etapas/:id
+// DELETE /api/etapas/:id  (os arquivos da etapa são apagados junto, inclusive do armazenamento)
 router.delete('/:id', async (req, res) => {
-  await prisma.etapa.delete({ where: daEtapa(req) });
+  const where = daEtapa(req);
+  const arquivos = await prisma.arquivo.findMany({
+    where: { etapaId: where.id, escritorioId: req.escritorioId },
+    select: { chave: true },
+  });
+  await prisma.etapa.delete({ where }); // o banco apaga os registros dos arquivos (cascade)
+  await armazenamento.apagar(arquivos.map((a) => a.chave));
   res.status(204).end();
 });
 

@@ -18,6 +18,7 @@ router.use('/escritorio', require('./escritorio.routes'));
 router.use(exigirEscritorio);
 
 router.use('/equipe', require('./equipe.routes'));
+router.use(require('./arquivos.routes'));
 router.use('/clientes', require('./clientes.routes'));
 router.use('/projetos', require('./projetos.routes'));
 router.use('/etapas', require('./etapas.routes'));

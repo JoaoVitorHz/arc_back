@@ -1,5 +1,6 @@
 const { Router } = require('express');
 const prisma = require('../lib/prisma');
+const armazenamento = require('../lib/armazenamento');
 const { ETAPAS_PADRAO } = require('../constants/etapas');
 const { garantirDoEscritorio } = require('../utils/escopo');
 const {
@@ -109,11 +110,15 @@ router.put('/:id', async (req, res) => {
   res.json(projeto);
 });
 
-// DELETE /api/projetos/:id  (etapas são apagadas; eventos e lançamentos ficam sem projeto)
+// DELETE /api/projetos/:id  (etapas e arquivos são apagados; eventos e lançamentos ficam sem projeto)
 router.delete('/:id', async (req, res) => {
-  await prisma.projeto.delete({
-    where: { id: parseId(req.params.id), escritorioId: req.escritorioId },
+  const id = parseId(req.params.id);
+  const arquivos = await prisma.arquivo.findMany({
+    where: { projetoId: id, escritorioId: req.escritorioId },
+    select: { chave: true },
   });
+  await prisma.projeto.delete({ where: { id, escritorioId: req.escritorioId } });
+  await armazenamento.apagar(arquivos.map((a) => a.chave));
   res.status(204).end();
 });
 

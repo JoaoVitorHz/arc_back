@@ -32,6 +32,7 @@ model Escritorio {
   eventos     Evento[]
   tiposEvento TipoEvento[]
   lancamentos Lancamento[]
+  arquivos    Arquivo[]
 
   @@index([encerradoPorId])
   @@map("escritorios")
@@ -62,6 +63,7 @@ model Usuario {
   tokensRedefinicao     TokenRedefinicaoSenha[]
   convitesEnviados      Convite[]               @relation("ConvitesEnviados")
   escritoriosEncerrados Escritorio[]            @relation("EscritoriosEncerrados")
+  arquivosEnviados      Arquivo[]
 
   @@index([escritorioId])
   @@map("usuarios")
@@ -166,6 +168,7 @@ model Projeto {
   etapas      Etapa[]
   eventos     Evento[]
   lancamentos Lancamento[]
+  arquivos    Arquivo[]
 
   @@index([escritorioId])
   @@index([clienteId])
@@ -190,8 +193,45 @@ model Etapa {
   projetoId Int
   projeto   Projeto @relation(fields: [projetoId], references: [id], onDelete: Cascade)
 
+  arquivos Arquivo[]
+
   @@index([projetoId])
   @@map("etapas")
+}
+
+// ---------- Arquivos dos projetos ----------
+
+enum TipoArquivo {
+  ARQUIVO // enviado para o sistema (guardado no armazenamento)
+  LINK // endereço externo (Google Drive, Dropbox, WeTransfer...)
+}
+
+// Arquivo ou link anexado a um projeto, dentro de uma etapa ou na pasta "Geral do projeto" (etapaId vazio).
+// Apagar a etapa ou o projeto apaga os arquivos junto (as rotas também removem do armazenamento).
+model Arquivo {
+  id       Int         @id @default(autoincrement())
+  tipo     TipoArquivo @default(ARQUIVO)
+  nome     String // nome mostrado (o original do computador, ou o título do link)
+  mimeType String?
+  tamanho  Int? // bytes
+  chave    String? // onde está no armazenamento (só ARQUIVO)
+  url      String?     @db.Text // só LINK
+  criadoEm DateTime    @default(now())
+
+  escritorioId Int
+  escritorio   Escritorio @relation(fields: [escritorioId], references: [id], onDelete: Cascade)
+  projetoId    Int
+  projeto      Projeto    @relation(fields: [projetoId], references: [id], onDelete: Cascade)
+  etapaId      Int?
+  etapa        Etapa?     @relation(fields: [etapaId], references: [id], onDelete: Cascade)
+  enviadoPorId Int?
+  enviadoPor   Usuario?   @relation(fields: [enviadoPorId], references: [id], onDelete: SetNull)
+
+  @@index([escritorioId])
+  @@index([projetoId])
+  @@index([etapaId])
+  @@index([enviadoPorId])
+  @@map("arquivos")
 }
 
 // ---------- Agenda ----------

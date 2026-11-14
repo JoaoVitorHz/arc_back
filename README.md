@@ -53,6 +53,8 @@ src/
   utils/escopo.js      # garante que cliente/projeto informado é do escritório logado
   lib/jwt.js           # gera e valida os tokens de login
   lib/email.js         # envio de e-mail (SMTP ou terminal)
+  lib/armazenamento.js # onde ficam os arquivos enviados (disco hoje; R2/S3 depois)
+uploads/               # arquivos enviados (fora do Git)
   constants/etapas.js  # etapas padrão de todo projeto novo
   constants/tiposEvento.js  # cores aceitas e tipos de compromisso padrão
   lib/prisma.js        # cliente do banco
@@ -64,6 +66,15 @@ src/
 - Login devolve um **token JWT** (válido por 7 dias). As rotas de dados exigem o header `Authorization: Bearer <token>`.
 - Todas as consultas filtram por `escritorioId`: um escritório nunca vê nem altera dados de outro. Ao receber um `clienteId`/`projetoId`, a API confere se ele é do mesmo escritório.
 - Senhas são guardadas com **bcrypt**. Login, cadastro, recuperação de senha e aceite de convite aceitam até 20 tentativas **com erro** a cada 15 minutos por IP (as que dão certo não contam, porque a equipe de um escritório costuma sair pelo mesmo IP).
+
+## Arquivos dos projetos
+
+- Cada arquivo (ou link do Drive/Dropbox) pertence a um projeto e fica **dentro de uma etapa** ou na pasta **Geral do projeto** (`etapaId` vazio).
+- Limite de **50 MB** por arquivo e 10 por envio; executáveis (`.exe`, `.bat`, `.js`...) são recusados. Arquivos maiores entram como link.
+- Os arquivos ficam em `uploads/` (ou `UPLOAD_DIR`), fora do Git, com nome aleatório; o nome original fica no banco. O download passa pela API, que confere o escritório; imagens e PDF podem abrir no navegador (`?visualizar=1`), o resto sempre baixa.
+- Apagar uma **etapa** ou um **projeto** apaga os arquivos dele (registro e conteúdo). Apagar um arquivo: quem enviou ou um administrador.
+- `lib/armazenamento.js` concentra o acesso ao disco (guardar, ler, apagar): para usar Cloudflare R2/S3 em produção, só ele muda.
+- ⚠️ Faça backup da pasta `uploads/` junto com o banco.
 
 ## Equipe
 
@@ -124,7 +135,13 @@ As rotas abaixo exigem token:
 | POST | `/projetos` | Cria projeto **com as etapas padrão** |
 | PUT / DELETE | `/projetos/:id` | Edita / exclui |
 | POST | `/projetos/:id/etapas` | Adiciona etapa ao final |
-| PATCH / DELETE | `/etapas/:id` | Altera status, nome, data prevista / remove |
+| PATCH / DELETE | `/etapas/:id` | Altera status, nome, data prevista / remove (com os arquivos dela) |
+| GET | `/projetos/:id/arquivos` | Arquivos e links do projeto |
+| POST | `/projetos/:id/arquivos` | Envio multipart: campo `arquivos` (até 10) + `etapaId` opcional |
+| POST | `/projetos/:id/links` | `{ nome, url, etapaId? }` |
+| GET | `/arquivos/:id/conteudo` | Baixa o arquivo (`?visualizar=1` abre imagem/PDF no navegador) |
+| PATCH | `/arquivos/:id` | Move de etapa `{ etapaId }` (null = Geral) e/ou renomeia `{ nome }` |
+| DELETE | `/arquivos/:id` | Apaga (quem enviou ou administrador) |
 | GET | `/eventos?inicio=&fim=` | Compromissos no intervalo |
 | POST / PUT / DELETE | `/eventos[/:id]` | Cria, edita, exclui (`tipoId` opcional) |
 | GET | `/tipos-evento` | Tipos de compromisso do escritório, com quantos compromissos usam cada um |
@@ -143,5 +160,7 @@ As rotas abaixo exigem token:
 
 ## Ainda não implementado
 
-- Exclusão automática dos escritórios encerrados há mais de 30 dias (hoje eles só ficam desativados)
+- Exclusão automática dos escritórios encerrados há mais de 30 dias (hoje eles só ficam desativados). Ao implementar, apagar também os arquivos deles no armazenamento
+- Armazenamento em nuvem (Cloudflare R2/S3) para os arquivos
+- Controle de versões das pranchas (R00, R01...) e aprovação pelo cliente
 - Testes automatizados
