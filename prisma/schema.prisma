@@ -64,7 +64,8 @@ model Usuario {
   convitesEnviados      Convite[]               @relation("ConvitesEnviados")
   escritoriosEncerrados Escritorio[]            @relation("EscritoriosEncerrados")
   arquivosEnviados      Arquivo[]
-  etapasEditadas        Etapa[]
+  etapasEditadas        Etapa[]                 @relation("AnotacaoEditadaPor")
+  etapasResponsavel     Etapa[]                 @relation("ResponsavelDaEtapa")
 
   @@index([escritorioId])
   @@map("usuarios")
@@ -192,9 +193,13 @@ model Etapa {
   descricao             String?     @db.Text
   descricaoEditadaEm    DateTime?
   descricaoEditadaPorId Int?
-  descricaoEditadaPor   Usuario?    @relation(fields: [descricaoEditadaPorId], references: [id], onDelete: SetNull)
-  criadoEm              DateTime    @default(now())
-  atualizadoEm          DateTime    @updatedAt
+  descricaoEditadaPor   Usuario?    @relation("AnotacaoEditadaPor", fields: [descricaoEditadaPorId], references: [id], onDelete: SetNull)
+
+  // Pessoa da equipe que cuida da etapa (vazio = sem responsável)
+  responsavelId Int?
+  responsavel   Usuario? @relation("ResponsavelDaEtapa", fields: [responsavelId], references: [id], onDelete: SetNull)
+  criadoEm      DateTime @default(now())
+  atualizadoEm  DateTime @updatedAt
 
   projetoId Int
   projeto   Projeto @relation(fields: [projetoId], references: [id], onDelete: Cascade)
@@ -203,6 +208,7 @@ model Etapa {
 
   @@index([projetoId])
   @@index([descricaoEditadaPorId])
+  @@index([responsavelId])
   @@map("etapas")
 }
 

@@ -113,7 +113,7 @@ As rotas abaixo exigem token:
 
 | Método | Rota | Descrição |
 |---|---|---|
-| GET | `/dashboard` | Indicadores do painel |
+| GET | `/dashboard` | Indicadores do painel e `minhasEtapas` (etapas não concluídas sob minha responsabilidade) |
 | GET | `/escritorio` | Escritório atual com tamanho da equipe e se tem dados |
 | PUT | `/escritorio` | Renomear `{ nome }` (admin) |
 | POST | `/escritorio/encerrar` | `{ confirmacao: "<nome>" }` (admin, sozinho no escritório) |
@@ -130,12 +130,13 @@ As rotas abaixo exigem token:
 | GET | `/clientes?busca=` | Lista clientes |
 | GET | `/clientes/:id` | Cliente com projetos (com progresso), compromissos e resumo financeiro |
 | POST / PUT / DELETE | `/clientes[/:id]` | Cria, edita, exclui (bloqueia se tiver projetos) |
-| GET | `/projetos?status=&clienteId=&busca=` | Lista projetos com `progresso` |
+| GET | `/projetos?status=&clienteId=&busca=` | Lista projetos com `progresso` e `etapasAtrasadas` |
 | GET | `/projetos/:id` | Projeto com cliente, etapas, compromissos e lançamentos |
 | POST | `/projetos` | Cria projeto **com as etapas padrão** |
 | PUT / DELETE | `/projetos/:id` | Edita / exclui |
 | POST | `/projetos/:id/etapas` | Adiciona etapa ao final |
-| PATCH / DELETE | `/etapas/:id` | Altera status, nome, data prevista, anotações `{ descricao }` (até 5000 caracteres; guarda quem editou e quando) / remove (com os arquivos dela) |
+| PATCH / DELETE | `/etapas/:id` | Altera status, nome, data prevista, responsável `{ responsavelId }` (alguém da equipe ou null), anotações `{ descricao }` (até 5000 caracteres; guarda quem editou e quando) / remove (com os arquivos dela) |
+| PUT | `/projetos/:id/etapas/ordem` | Nova ordem das etapas `{ ids: [...] }` (todas, cada uma uma vez) |
 | GET | `/projetos/:id/arquivos` | Arquivos e links do projeto |
 | POST | `/projetos/:id/arquivos` | Envio multipart: campo `arquivos` (até 10) + `etapaId` opcional |
 | POST | `/projetos/:id/links` | `{ nome, url, etapaId? }` |

@@ -1,7 +1,7 @@
 const { Router } = require('express');
 const prisma = require('../lib/prisma');
 const armazenamento = require('../lib/armazenamento');
-const { HttpError, parseId, toDate } = require('../utils/http');
+const { HttpError, parseId, toDate, toOptionalInt } = require('../utils/http');
 
 const router = Router();
 
@@ -16,12 +16,23 @@ const daEtapa = (req) => ({
 
 // PATCH /api/etapas/:id  (atualiza só os campos enviados)
 router.patch('/:id', async (req, res) => {
-  const { nome, status, dataPrevista, descricao } = req.body;
+  const { nome, status, dataPrevista, descricao, responsavelId } = req.body;
   const data = {};
 
   if (nome !== undefined) {
-    if (!nome.trim()) throw new HttpError(400, 'O nome da etapa não pode ficar vazio');
-    data.nome = nome.trim();
+    const texto = String(nome ?? '').trim();
+    if (!texto) throw new HttpError(400, 'O nome da etapa não pode ficar vazio');
+    if (texto.length > 191) throw new HttpError(400, 'O nome da etapa pode ter no máximo 191 caracteres');
+    data.nome = texto;
+  }
+  // Responsável: precisa ser alguém da equipe do escritório (null = sem responsável)
+  if (responsavelId !== undefined) {
+    const id = toOptionalInt(responsavelId);
+    if (id !== null) {
+      const daEquipe = await prisma.usuario.count({ where: { id, escritorioId: req.escritorioId } });
+      if (!daEquipe) throw new HttpError(400, 'Responsável precisa ser alguém da equipe');
+    }
+    data.responsavelId = id;
   }
   if (status !== undefined) {
     if (!STATUS_VALIDOS.includes(status)) throw new HttpError(400, 'Status inválido');

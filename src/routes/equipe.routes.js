@@ -114,11 +114,13 @@ router.post('/sair', async (req, res) => {
     throw new HttpError(400, 'Você é o único administrador. Torne outra pessoa administradora antes de sair.');
   }
 
-  const usuario = await prisma.usuario.update({
-    where: { id: req.usuario.id },
-    data: { escritorioId: null },
-    select: selecaoUsuario,
-  });
+  const [usuario] = await prisma.$transaction([
+    prisma.usuario.update({ where: { id: req.usuario.id }, data: { escritorioId: null }, select: selecaoUsuario }),
+    prisma.etapa.updateMany({
+      where: { responsavelId: req.usuario.id, projeto: { escritorioId: req.escritorioId } },
+      data: { responsavelId: null },
+    }),
+  ]);
   res.json({ usuario });
 });
 
@@ -237,7 +239,14 @@ router.delete('/membros/:id', async (req, res) => {
     throw new HttpError(400, 'Para sair da equipe, use "Sair do escritório" no seu perfil');
   }
 
-  await prisma.usuario.update({ where: { id: membro.id }, data: { escritorioId: null } });
+  await prisma.$transaction([
+    prisma.usuario.update({ where: { id: membro.id }, data: { escritorioId: null } }),
+    // as etapas dele ficam sem responsável
+    prisma.etapa.updateMany({
+      where: { responsavelId: membro.id, projeto: { escritorioId: req.escritorioId } },
+      data: { responsavelId: null },
+    }),
+  ]);
   res.status(204).end();
 });
 

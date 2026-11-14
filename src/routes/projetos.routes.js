@@ -4,6 +4,7 @@ const armazenamento = require('../lib/armazenamento');
 const { ETAPAS_PADRAO } = require('../constants/etapas');
 const { garantirDoEscritorio } = require('../utils/escopo');
 const {
+  HttpError,
   parseId,
   requireFields,
   emptyToNull,
@@ -12,6 +13,13 @@ const {
 } = require('../utils/http');
 
 const router = Router();
+
+// Etapas não concluídas com data prevista anterior a hoje (datas de etapa são salvas como meia-noite UTC)
+function contarAtrasadas(etapas) {
+  const agora = new Date();
+  const hojeUtc = Date.UTC(agora.getFullYear(), agora.getMonth(), agora.getDate());
+  return etapas.filter((e) => e.status !== 'CONCLUIDA' && e.dataPrevista && e.dataPrevista.getTime() < hojeUtc).length;
+}
 
 // Percentual de etapas concluídas
 function calcularProgresso(etapas) {
@@ -49,7 +57,7 @@ router.get('/', async (req, res) => {
     },
     include: {
       cliente: { select: { id: true, nome: true } },
-      etapas: { select: { status: true } },
+      etapas: { select: { status: true, dataPrevista: true } },
     },
     orderBy: { criadoEm: 'desc' },
   });
@@ -58,6 +66,7 @@ router.get('/', async (req, res) => {
     projetos.map(({ etapas, ...projeto }) => ({
       ...projeto,
       totalEtapas: etapas.length,
+      etapasAtrasadas: contarAtrasadas(etapas),
       progresso: calcularProgresso(etapas),
     }))
   );
@@ -71,7 +80,10 @@ router.get('/:id', async (req, res) => {
       cliente: true,
       etapas: {
         orderBy: { ordem: 'asc' },
-        include: { descricaoEditadaPor: { select: { id: true, nome: true } } },
+        include: {
+          descricaoEditadaPor: { select: { id: true, nome: true } },
+          responsavel: { select: { id: true, nome: true } },
+        },
       },
       lancamentos: { orderBy: { vencimento: 'asc' } },
       eventos: {
@@ -122,6 +134,20 @@ router.delete('/:id', async (req, res) => {
   });
   await prisma.projeto.delete({ where: { id, escritorioId: req.escritorioId } });
   await armazenamento.apagar(arquivos.map((a) => a.chave));
+  res.status(204).end();
+});
+
+// PUT /api/projetos/:id/etapas/ordem  { ids: [3, 1, 2, ...] }  (nova ordem das etapas)
+router.put('/:id/etapas/ordem', async (req, res) => {
+  const projetoId = parseId(req.params.id);
+  await garantirDoEscritorio('projeto', projetoId, req.escritorioId);
+
+  const ids = Array.isArray(req.body.ids) ? req.body.ids.map((id) => parseId(id)) : null;
+  const atuais = await prisma.etapa.findMany({ where: { projetoId }, select: { id: true } });
+  const mesmas = ids && ids.length === atuais.length && new Set(ids).size === ids.length && atuais.every((e) => ids.includes(e.id));
+  if (!mesmas) throw new HttpError(400, 'Envie todas as etapas do projeto, cada uma uma vez, na nova ordem');
+
+  await prisma.$transaction(ids.map((id, i) => prisma.etapa.update({ where: { id }, data: { ordem: i + 1 } })));
   res.status(204).end();
 });
 

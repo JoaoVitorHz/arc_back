@@ -11,7 +11,7 @@ router.get('/', async (req, res) => {
   const hojeUtc = new Date(Date.UTC(agora.getFullYear(), agora.getMonth(), agora.getDate()));
   const { escritorioId } = req;
 
-  const [projetosAtivos, totalClientes, projetos, proximosEventos, contasVencidas, resumoMes] =
+  const [projetosAtivos, totalClientes, projetos, proximosEventos, contasVencidas, resumoMes, minhasEtapas] =
     await Promise.all([
       prisma.projeto.count({ where: { escritorioId, status: 'ATIVO' } }),
       prisma.cliente.count({ where: { escritorioId } }),
@@ -36,6 +36,21 @@ router.get('/', async (req, res) => {
       }),
       prisma.lancamento.count({ where: { escritorioId, pago: false, vencimento: { lt: hojeUtc } } }),
       calcularResumoMes(currentMonth(), escritorioId),
+      // Etapas sob minha responsabilidade, ainda não concluídas, em projetos ativos
+      prisma.etapa.findMany({
+        where: {
+          responsavelId: req.usuario.id,
+          status: { not: 'CONCLUIDA' },
+          projeto: { escritorioId, status: 'ATIVO' },
+        },
+        select: {
+          id: true,
+          nome: true,
+          status: true,
+          dataPrevista: true,
+          projeto: { select: { id: true, nome: true } },
+        },
+      }),
     ]);
 
   const projetosResumo = projetos.map(({ etapas, ...projeto }) => {
@@ -56,6 +71,10 @@ router.get('/', async (req, res) => {
     resumoMes,
     projetos: projetosResumo,
     proximosEventos,
+    // com data primeiro (das mais antigas/atrasadas para as mais distantes), sem data no fim
+    minhasEtapas: minhasEtapas.sort(
+      (a, b) => (a.dataPrevista?.getTime() ?? Infinity) - (b.dataPrevista?.getTime() ?? Infinity)
+    ),
   });
 });
 
