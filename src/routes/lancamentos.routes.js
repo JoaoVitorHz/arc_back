@@ -1,6 +1,10 @@
 const { Router } = require('express');
 const prisma = require('../lib/prisma');
-const { calcularResumoMes } = require('../services/financeiro.service');
+const {
+  calcularResumoMes,
+  calcularMovimentoMes,
+  despesasPorCategoria,
+} = require('../services/financeiro.service');
 const { garantirDoEscritorio } = require('../utils/escopo');
 const {
   HttpError,
@@ -126,25 +130,14 @@ router.get('/fluxo', async (req, res) => {
   res.json({ meses: fluxo, despesasPorCategoria: despesasPorCategoria(lancamentos) });
 });
 
-// Total de despesas por categoria no período: as 5 maiores e o resto somado em "Outras"
-function despesasPorCategoria(lancamentos) {
-  const totais = new Map();
-  for (const l of lancamentos) {
-    if (l.tipo !== 'DESPESA') continue;
-    const nome = l.categoria?.trim() || 'Sem categoria';
-    totais.set(nome, (totais.get(nome) || 0) + Number(l.valor));
-  }
-  const ordenadas = [...totais]
-    .map(([categoria, total]) => ({ categoria, total }))
-    .sort((a, b) => b.total - a.total);
-  if (ordenadas.length <= 6) return ordenadas;
-  const outras = ordenadas.slice(5).reduce((t, c) => t + c.total, 0);
-  return [...ordenadas.slice(0, 5), { categoria: 'Outras', total: outras }];
-}
-
 // GET /api/lancamentos/resumo?mes=2026-11
 router.get('/resumo', async (req, res) => {
-  res.json(await calcularResumoMes(req.query.mes || currentMonth(), req.escritorioId));
+  const mes = req.query.mes || currentMonth();
+  const [resumo, movimento] = await Promise.all([
+    calcularResumoMes(mes, req.escritorioId),
+    calcularMovimentoMes(mes, req.escritorioId),
+  ]);
+  res.json({ ...resumo, ...movimento });
 });
 
 // POST /api/lancamentos  (opcional: repeticao = { modo: 'parcelar' | 'repetir', vezes })
