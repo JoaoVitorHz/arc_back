@@ -52,12 +52,13 @@ src/
   utils/escopo.js      # garante que cliente/projeto informado é do escritório logado
   lib/jwt.js           # gera e valida os tokens de login
   constants/etapas.js  # etapas padrão de todo projeto novo
+  constants/tiposEvento.js  # cores aceitas e tipos de compromisso padrão
   lib/prisma.js        # cliente do banco
 ```
 
 ## Autenticação e escritórios
 
-- Cada conta pertence a um **escritório**. O cadastro cria o escritório e o primeiro usuário.
+- Cada conta pertence a um **escritório**. O cadastro cria o escritório, o primeiro usuário e os tipos de compromisso padrão (Reunião, Visita técnica, Visita de obra, Entrega, Outro).
 - Login devolve um **token JWT** (válido por 7 dias). As rotas de dados exigem o header `Authorization: Bearer <token>`.
 - Todas as consultas filtram por `escritorioId`: um escritório nunca vê nem altera dados de outro. Ao receber um `clienteId`/`projetoId`, a API confere se ele é do mesmo escritório.
 - Senhas são guardadas com **bcrypt**. Login e cadastro aceitam até 20 tentativas a cada 15 minutos por IP.
@@ -88,7 +89,10 @@ As rotas abaixo exigem token:
 | POST | `/projetos/:id/etapas` | Adiciona etapa ao final |
 | PATCH / DELETE | `/etapas/:id` | Altera status, nome, data prevista / remove |
 | GET | `/eventos?inicio=&fim=` | Compromissos no intervalo |
-| POST / PUT / DELETE | `/eventos[/:id]` | Cria, edita, exclui |
+| POST / PUT / DELETE | `/eventos[/:id]` | Cria, edita, exclui (`tipoId` opcional) |
+| GET | `/tipos-evento` | Tipos de compromisso do escritório, com quantos compromissos usam cada um |
+| POST / PUT | `/tipos-evento[/:id]` | `{ nome, cor }`; cores: blue, purple, pink, red, orange, amber, green, gray |
+| DELETE | `/tipos-evento/:id` | Exclui; os compromissos desse tipo ficam sem tipo |
 | GET | `/lancamentos?mes=AAAA-MM&tipo=&situacao=pago\|pendente` | Lista lançamentos |
 | GET | `/lancamentos/resumo?mes=AAAA-MM` | Totais do mês |
 | POST / PUT / DELETE | `/lancamentos[/:id]` | Cria, edita, exclui |

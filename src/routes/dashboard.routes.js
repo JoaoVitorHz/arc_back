@@ -27,6 +27,7 @@ router.get('/', async (req, res) => {
       prisma.evento.findMany({
         where: { escritorioId, inicio: { gte: agora } },
         include: {
+          tipo: { select: { id: true, nome: true, cor: true } },
           cliente: { select: { id: true, nome: true } },
           projeto: { select: { id: true, nome: true } },
         },

@@ -3,6 +3,7 @@
 const { PrismaClient } = require('@prisma/client');
 const bcrypt = require('bcryptjs');
 const { ETAPAS_PADRAO } = require('../src/constants/etapas');
+const { TIPOS_EVENTO_PADRAO } = require('../src/constants/tiposEvento');
 
 const prisma = new PrismaClient();
 
@@ -26,6 +27,7 @@ async function apagarEscritorios(ids) {
   const where = { escritorioId: { in: ids } };
   await prisma.lancamento.deleteMany({ where });
   await prisma.evento.deleteMany({ where });
+  await prisma.tipoEvento.deleteMany({ where });
   await prisma.projeto.deleteMany({ where }); // etapas vão junto (cascade)
   await prisma.cliente.deleteMany({ where });
   await prisma.usuario.deleteMany({ where });
@@ -65,9 +67,14 @@ async function main() {
       usuarios: {
         create: { nome: 'Usuário Demo', email: DEMO.email, senhaHash: await bcrypt.hash(DEMO.senha, 10) },
       },
+      tiposEvento: { create: TIPOS_EVENTO_PADRAO },
     },
   });
   escritorioId = escritorio.id;
+
+  // id de cada tipo pelo nome (Reunião, Visita técnica...)
+  const tipos = await prisma.tipoEvento.findMany({ where: { escritorioId } });
+  const tipoId = (nome) => tipos.find((t) => t.nome === nome).id;
 
   const ana = await prisma.cliente.create({
     data: { escritorioId, nome: 'Ana Souza', email: 'ana@exemplo.com', telefone: '(11) 99999-1111', documento: '123.456.789-00' },
@@ -110,10 +117,10 @@ async function main() {
 
   await prisma.evento.createMany({
     data: [
-      { escritorioId, titulo: 'Apresentação do anteprojeto', tipo: 'REUNIAO', inicio: diasAPartirDeHoje(1, 10), clienteId: ana.id, projetoId: casa.id },
-      { escritorioId, titulo: 'Levantamento de medidas', tipo: 'VISITA_TECNICA', inicio: diasAPartirDeHoje(2, 14), local: 'Av. Ibirapuera, 500', clienteId: carlos.id, projetoId: apto.id },
-      { escritorioId, titulo: 'Visita de obra', tipo: 'VISITA_OBRA', inicio: diasAPartirDeHoje(4, 9), clienteId: cafe.id, projetoId: loja.id },
-      { escritorioId, titulo: 'Entrega do executivo', tipo: 'ENTREGA', inicio: diasAPartirDeHoje(7, 17), clienteId: cafe.id, projetoId: loja.id },
+      { escritorioId, titulo: 'Apresentação do anteprojeto', tipoId: tipoId('Reunião'), inicio: diasAPartirDeHoje(1, 10), clienteId: ana.id, projetoId: casa.id },
+      { escritorioId, titulo: 'Levantamento de medidas', tipoId: tipoId('Visita técnica'), inicio: diasAPartirDeHoje(2, 14), local: 'Av. Ibirapuera, 500', clienteId: carlos.id, projetoId: apto.id },
+      { escritorioId, titulo: 'Visita de obra', tipoId: tipoId('Visita de obra'), inicio: diasAPartirDeHoje(4, 9), clienteId: cafe.id, projetoId: loja.id },
+      { escritorioId, titulo: 'Entrega do executivo', tipoId: tipoId('Entrega'), inicio: diasAPartirDeHoje(7, 17), clienteId: cafe.id, projetoId: loja.id },
     ],
   });
 

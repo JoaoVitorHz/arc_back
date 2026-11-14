@@ -3,6 +3,7 @@ const bcrypt = require('bcryptjs');
 const { rateLimit } = require('express-rate-limit');
 const prisma = require('../lib/prisma');
 const { gerarToken } = require('../lib/jwt');
+const { TIPOS_EVENTO_PADRAO } = require('../constants/tiposEvento');
 const autenticar = require('../middlewares/autenticar');
 const { HttpError, requireFields } = require('../utils/http');
 
@@ -47,7 +48,7 @@ function respostaSessao(usuario) {
 }
 
 // POST /api/auth/cadastro  { nome, email, senha, nomeEscritorio }
-// Cria o escritório e o primeiro usuário dele
+// Cria o escritório, o primeiro usuário dele e os tipos de compromisso padrão
 router.post('/cadastro', limiteTentativas, async (req, res) => {
   requireFields(req.body, ['nome', 'email', 'senha', 'nomeEscritorio']);
 
@@ -68,6 +69,7 @@ router.post('/cadastro', limiteTentativas, async (req, res) => {
     data: {
       nome: nomeEscritorio,
       usuarios: { create: { nome, email, senhaHash } },
+      tiposEvento: { create: TIPOS_EVENTO_PADRAO },
     },
     select: { usuarios: { select: selecaoUsuario } },
   });

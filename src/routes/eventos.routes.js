@@ -12,6 +12,7 @@ const {
 const router = Router();
 
 const incluirRelacoes = {
+  tipo: { select: { id: true, nome: true, cor: true } },
   cliente: { select: { id: true, nome: true } },
   projeto: { select: { id: true, nome: true } },
 };
@@ -19,7 +20,7 @@ const incluirRelacoes = {
 async function dadosEvento(body, escritorioId) {
   const dados = {
     titulo: body.titulo?.trim(),
-    tipo: body.tipo || undefined,
+    tipoId: toOptionalInt(body.tipoId),
     inicio: toDate(body.inicio),
     fim: toDate(body.fim),
     local: emptyToNull(body.local),
@@ -27,6 +28,7 @@ async function dadosEvento(body, escritorioId) {
     clienteId: toOptionalInt(body.clienteId),
     projetoId: toOptionalInt(body.projetoId),
   };
+  await garantirDoEscritorio('tipoEvento', dados.tipoId, escritorioId);
   await garantirDoEscritorio('cliente', dados.clienteId, escritorioId);
   await garantirDoEscritorio('projeto', dados.projetoId, escritorioId);
   return dados;

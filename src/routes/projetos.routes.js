@@ -70,7 +70,10 @@ router.get('/:id', async (req, res) => {
       cliente: true,
       etapas: { orderBy: { ordem: 'asc' } },
       lancamentos: { orderBy: { vencimento: 'asc' } },
-      eventos: { orderBy: { inicio: 'asc' } },
+      eventos: {
+        orderBy: { inicio: 'asc' },
+        include: { tipo: { select: { id: true, nome: true, cor: true } } },
+      },
     },
   });
 

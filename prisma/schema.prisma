@@ -23,6 +23,7 @@ model Escritorio {
   clientes    Cliente[]
   projetos    Projeto[]
   eventos     Evento[]
+  tiposEvento TipoEvento[]
   lancamentos Lancamento[]
 
   @@map("escritorios")
@@ -46,14 +47,14 @@ model Usuario {
 // ---------- Clientes ----------
 
 model Cliente {
-  id          Int      @id @default(autoincrement())
-  nome        String
-  email       String?
-  telefone    String?
-  documento   String? // CPF ou CNPJ
-  endereco    String?
-  observacoes String?  @db.Text
-  criadoEm    DateTime @default(now())
+  id           Int      @id @default(autoincrement())
+  nome         String
+  email        String?
+  telefone     String?
+  documento    String? // CPF ou CNPJ
+  endereco     String?
+  observacoes  String?  @db.Text
+  criadoEm     DateTime @default(now())
   atualizadoEm DateTime @updatedAt
 
   escritorioId Int
@@ -133,33 +134,46 @@ model Etapa {
 
 // ---------- Agenda ----------
 
-enum TipoEvento {
-  REUNIAO
-  VISITA_TECNICA
-  VISITA_OBRA
-  ENTREGA
-  OUTRO
-}
-
-model Evento {
-  id        Int        @id @default(autoincrement())
-  titulo    String
-  tipo      TipoEvento @default(REUNIAO)
-  inicio    DateTime
-  fim       DateTime?
-  local     String?
-  descricao String?    @db.Text
-  criadoEm  DateTime   @default(now())
+// Tipos de compromisso cadastrados por cada escritório (Reunião, Visita de obra...)
+model TipoEvento {
+  id           Int      @id @default(autoincrement())
+  nome         String
+  cor          String   @default("blue") // chave da paleta: blue, purple, pink, red, orange, amber, green, gray
+  criadoEm     DateTime @default(now())
   atualizadoEm DateTime @updatedAt
 
   escritorioId Int
   escritorio   Escritorio @relation(fields: [escritorioId], references: [id], onDelete: Cascade)
+
+  eventos Evento[]
+
+  @@unique([escritorioId, nome])
+  @@map("tipos_evento")
+}
+
+model Evento {
+  id           Int       @id @default(autoincrement())
+  titulo       String
+  inicio       DateTime
+  fim          DateTime?
+  local        String?
+  descricao    String?   @db.Text
+  criadoEm     DateTime  @default(now())
+  atualizadoEm DateTime  @updatedAt
+
+  escritorioId Int
+  escritorio   Escritorio @relation(fields: [escritorioId], references: [id], onDelete: Cascade)
+
+  // Ao excluir um tipo, os compromissos dele ficam sem tipo
+  tipoId Int?
+  tipo   TipoEvento? @relation(fields: [tipoId], references: [id], onDelete: SetNull)
 
   clienteId Int?
   cliente   Cliente? @relation(fields: [clienteId], references: [id], onDelete: SetNull)
   projetoId Int?
   projeto   Projeto? @relation(fields: [projetoId], references: [id], onDelete: SetNull)
 
+  @@index([tipoId])
   @@index([escritorioId, inicio])
   @@index([inicio])
   @@map("eventos")
