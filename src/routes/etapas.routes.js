@@ -202,4 +202,31 @@ router.post('/:id/revisao/desfazer', async (req, res) => {
   throw new HttpError(400, 'Não há nada para desfazer');
 });
 
+// DELETE /api/etapas/:id/revisao  (apaga a revisão atual e os arquivos dela; a etapa volta para a anterior)
+// Só a mais recente pode ser apagada, para o histórico não ficar com buracos. A Nº 00 (entrega original)
+// não é apagada. Revisão já enviada ao cliente: só administradores.
+router.delete('/:id/revisao', async (req, res) => {
+  const etapa = await etapaDoEscritorio(req);
+  const { numero, registro } = await revisaoAtualDaEtapa(etapa.id);
+  if (numero === 0) {
+    throw new HttpError(400, 'A Revisão Nº 00 é a entrega original e não pode ser apagada. Use "Desfazer" para limpar as marcações.');
+  }
+  if (registro?.enviadaEm && req.usuario.papel !== 'ADMIN') {
+    throw new HttpError(403, 'Esta revisão já foi enviada ao cliente: só um administrador pode apagá-la');
+  }
+
+  const arquivos = await prisma.arquivo.findMany({
+    where: { etapaId: etapa.id, revisaoNumero: numero, escritorioId: req.escritorioId },
+    select: { id: true, chave: true },
+  });
+  await prisma.$transaction([
+    prisma.arquivo.deleteMany({ where: { id: { in: arquivos.map((a) => a.id) } } }),
+    prisma.revisaoEtapa.deleteMany({ where: { etapaId: etapa.id, numero } }),
+    prisma.etapa.update({ where: { id: etapa.id }, data: { revisaoAtual: numero - 1 } }),
+  ]);
+  await armazenamento.apagar(arquivos.map((a) => a.chave));
+
+  res.json({ revisaoAtual: numero - 1, arquivosApagados: arquivos.length });
+});
+
 module.exports = router;

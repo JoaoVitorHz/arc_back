@@ -81,6 +81,7 @@ uploads/               # arquivos enviados (fora do Git)
 - Cada etapa tem rodadas de revisão: **R00** (entrega original), R01, R02... Tudo é opcional: sem marcar nenhum envio, a etapa fica na R00 e funciona como antes.
 - `POST /etapas/:id/revisao/enviar` marca a revisão atual como enviada (data, meio, observação). Depois disso, **anexar arquivos na etapa abre a próxima revisão sozinho**; `POST /etapas/:id/revisao/nova` abre manualmente.
 - `pedido` registra o que o cliente pediu; `aprovar` marca como aprovada; `desfazer` desfaz a última marcação (aprovação → pedido → envio → revisão aberta sem arquivos).
+- `DELETE /etapas/:id/revisao` apaga a revisão atual (a partir da R01) e os arquivos dela; a etapa volta para a anterior. Só a mais recente pode ser apagada; se já foi enviada ao cliente, só administradores.
 - `revisoesPrevistas` (PATCH da etapa) habilita o contador "N de M"; revisões além do previsto podem ser cobradas como extra.
 - Arquivos de uma revisão já enviada são o que o cliente recebeu: não podem ser movidos e só um administrador pode apagá-los.
 - O upload responde `{ arquivos, revisao }` (`revisao.nova` indica que uma revisão foi aberta).
