@@ -1,0 +1,132 @@
+const { Router } = require('express');
+const prisma = require('../lib/prisma');
+const { ETAPAS_PADRAO } = require('../constants/etapas');
+const {
+  parseId,
+  requireFields,
+  emptyToNull,
+  toDate,
+  toDecimal,
+} = require('../utils/http');
+
+const router = Router();
+
+// Percentual de etapas concluídas
+function calcularProgresso(etapas) {
+  if (!etapas.length) return 0;
+  const concluidas = etapas.filter((e) => e.status === 'CONCLUIDA').length;
+  return Math.round((concluidas / etapas.length) * 100);
+}
+
+function dadosProjeto(body) {
+  return {
+    nome: body.nome?.trim(),
+    tipo: body.tipo || undefined,
+    status: body.status || undefined,
+    enderecoObra: emptyToNull(body.enderecoObra),
+    valorContrato: toDecimal(body.valorContrato),
+    dataInicio: toDate(body.dataInicio),
+    previsaoEntrega: toDate(body.previsaoEntrega),
+    observacoes: emptyToNull(body.observacoes),
+    clienteId: parseId(body.clienteId),
+  };
+}
+
+// GET /api/projetos?status=&clienteId=&busca=
+router.get('/', async (req, res) => {
+  const { status, clienteId, busca } = req.query;
+
+  const projetos = await prisma.projeto.findMany({
+    where: {
+      status: status || undefined,
+      clienteId: clienteId ? parseId(clienteId) : undefined,
+      nome: busca ? { contains: busca } : undefined,
+    },
+    include: {
+      cliente: { select: { id: true, nome: true } },
+      etapas: { select: { status: true } },
+    },
+    orderBy: { criadoEm: 'desc' },
+  });
+
+  res.json(
+    projetos.map(({ etapas, ...projeto }) => ({
+      ...projeto,
+      totalEtapas: etapas.length,
+      progresso: calcularProgresso(etapas),
+    }))
+  );
+});
+
+// GET /api/projetos/:id
+router.get('/:id', async (req, res) => {
+  const projeto = await prisma.projeto.findUniqueOrThrow({
+    where: { id: parseId(req.params.id) },
+    include: {
+      cliente: true,
+      etapas: { orderBy: { ordem: 'asc' } },
+      lancamentos: { orderBy: { vencimento: 'asc' } },
+      eventos: { orderBy: { inicio: 'asc' } },
+    },
+  });
+
+  res.json({ ...projeto, progresso: calcularProgresso(projeto.etapas) });
+});
+
+// POST /api/projetos  (cria as etapas padrão junto)
+router.post('/', async (req, res) => {
+  requireFields(req.body, ['nome', 'clienteId']);
+
+  const projeto = await prisma.projeto.create({
+    data: {
+      ...dadosProjeto(req.body),
+      etapas: {
+        create: ETAPAS_PADRAO.map((nome, index) => ({ nome, ordem: index + 1 })),
+      },
+    },
+  });
+
+  res.status(201).json(projeto);
+});
+
+// PUT /api/projetos/:id
+router.put('/:id', async (req, res) => {
+  requireFields(req.body, ['nome', 'clienteId']);
+
+  const projeto = await prisma.projeto.update({
+    where: { id: parseId(req.params.id) },
+    data: dadosProjeto(req.body),
+  });
+
+  res.json(projeto);
+});
+
+// DELETE /api/projetos/:id  (etapas são apagadas; eventos e lançamentos ficam sem projeto)
+router.delete('/:id', async (req, res) => {
+  await prisma.projeto.delete({ where: { id: parseId(req.params.id) } });
+  res.status(204).end();
+});
+
+// POST /api/projetos/:id/etapas  (adiciona etapa no final)
+router.post('/:id/etapas', async (req, res) => {
+  requireFields(req.body, ['nome']);
+  const projetoId = parseId(req.params.id);
+
+  const ultima = await prisma.etapa.findFirst({
+    where: { projetoId },
+    orderBy: { ordem: 'desc' },
+  });
+
+  const etapa = await prisma.etapa.create({
+    data: {
+      nome: req.body.nome.trim(),
+      ordem: (ultima?.ordem || 0) + 1,
+      dataPrevista: toDate(req.body.dataPrevista),
+      projetoId,
+    },
+  });
+
+  res.status(201).json(etapa);
+});
+
+module.exports = router;

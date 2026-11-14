@@ -1,0 +1,147 @@
+// Modelo de dados do ArcGestão (MVP)
+// Docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------- Clientes ----------
+
+model Cliente {
+  id          Int      @id @default(autoincrement())
+  nome        String
+  email       String?
+  telefone    String?
+  documento   String? // CPF ou CNPJ
+  endereco    String?
+  observacoes String?  @db.Text
+  criadoEm    DateTime @default(now())
+  atualizadoEm DateTime @updatedAt
+
+  projetos Projeto[]
+  eventos  Evento[]
+
+  @@map("clientes")
+}
+
+// ---------- Projetos e etapas ----------
+
+enum TipoProjeto {
+  RESIDENCIAL
+  INTERIORES
+  COMERCIAL
+  OUTRO
+}
+
+enum StatusProjeto {
+  ATIVO
+  PAUSADO
+  CONCLUIDO
+}
+
+model Projeto {
+  id              Int           @id @default(autoincrement())
+  nome            String
+  tipo            TipoProjeto   @default(RESIDENCIAL)
+  status          StatusProjeto @default(ATIVO)
+  enderecoObra    String?
+  valorContrato   Decimal?      @db.Decimal(12, 2)
+  dataInicio      DateTime?     @db.Date
+  previsaoEntrega DateTime?     @db.Date
+  observacoes     String?       @db.Text
+  criadoEm        DateTime      @default(now())
+  atualizadoEm    DateTime      @updatedAt
+
+  clienteId Int
+  cliente   Cliente @relation(fields: [clienteId], references: [id], onDelete: Restrict)
+
+  etapas      Etapa[]
+  eventos     Evento[]
+  lancamentos Lancamento[]
+
+  @@index([clienteId])
+  @@map("projetos")
+}
+
+enum StatusEtapa {
+  NAO_INICIADA
+  EM_ANDAMENTO
+  CONCLUIDA
+}
+
+model Etapa {
+  id           Int         @id @default(autoincrement())
+  nome         String
+  ordem        Int
+  status       StatusEtapa @default(NAO_INICIADA)
+  dataPrevista DateTime?   @db.Date
+  criadoEm     DateTime    @default(now())
+  atualizadoEm DateTime    @updatedAt
+
+  projetoId Int
+  projeto   Projeto @relation(fields: [projetoId], references: [id], onDelete: Cascade)
+
+  @@index([projetoId])
+  @@map("etapas")
+}
+
+// ---------- Agenda ----------
+
+enum TipoEvento {
+  REUNIAO
+  VISITA_TECNICA
+  VISITA_OBRA
+  ENTREGA
+  OUTRO
+}
+
+model Evento {
+  id        Int        @id @default(autoincrement())
+  titulo    String
+  tipo      TipoEvento @default(REUNIAO)
+  inicio    DateTime
+  fim       DateTime?
+  local     String?
+  descricao String?    @db.Text
+  criadoEm  DateTime   @default(now())
+  atualizadoEm DateTime @updatedAt
+
+  clienteId Int?
+  cliente   Cliente? @relation(fields: [clienteId], references: [id], onDelete: SetNull)
+  projetoId Int?
+  projeto   Projeto? @relation(fields: [projetoId], references: [id], onDelete: SetNull)
+
+  @@index([inicio])
+  @@map("eventos")
+}
+
+// ---------- Financeiro ----------
+
+enum TipoLancamento {
+  RECEITA
+  DESPESA
+}
+
+model Lancamento {
+  id            Int            @id @default(autoincrement())
+  descricao     String
+  tipo          TipoLancamento
+  valor         Decimal        @db.Decimal(12, 2)
+  vencimento    DateTime       @db.Date
+  pago          Boolean        @default(false)
+  dataPagamento DateTime?      @db.Date
+  categoria     String?
+  criadoEm      DateTime       @default(now())
+  atualizadoEm  DateTime       @updatedAt
+
+  projetoId Int?
+  projeto   Projeto? @relation(fields: [projetoId], references: [id], onDelete: SetNull)
+
+  @@index([vencimento])
+  @@map("lancamentos")
+}
