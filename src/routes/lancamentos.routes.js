@@ -1,10 +1,6 @@
 const { Router } = require('express');
 const prisma = require('../lib/prisma');
-const {
-  calcularResumoMes,
-  calcularMovimentoMes,
-  despesasPorCategoria,
-} = require('../services/financeiro.service');
+const { calcularResumoMes, despesasPorCategoria } = require('../services/financeiro.service');
 const { garantirDoEscritorio } = require('../utils/escopo');
 const {
   HttpError,
@@ -132,12 +128,7 @@ router.get('/fluxo', async (req, res) => {
 
 // GET /api/lancamentos/resumo?mes=2026-11
 router.get('/resumo', async (req, res) => {
-  const mes = req.query.mes || currentMonth();
-  const [resumo, movimento] = await Promise.all([
-    calcularResumoMes(mes, req.escritorioId),
-    calcularMovimentoMes(mes, req.escritorioId),
-  ]);
-  res.json({ ...resumo, ...movimento });
+  res.json(await calcularResumoMes(req.query.mes || currentMonth(), req.escritorioId));
 });
 
 // POST /api/lancamentos  (opcional: repeticao = { modo: 'parcelar' | 'repetir', vezes })
