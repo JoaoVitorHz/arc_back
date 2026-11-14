@@ -38,13 +38,56 @@ router.get('/', async (req, res) => {
   res.json(clientes);
 });
 
-// GET /api/clientes/:id
+// GET /api/clientes/:id  (página do cliente: projetos com progresso, compromissos e resumo financeiro)
 router.get('/:id', async (req, res) => {
+  const id = parseId(req.params.id);
+  const { escritorioId } = req;
+
   const cliente = await prisma.cliente.findFirstOrThrow({
-    where: { id: parseId(req.params.id), escritorioId: req.escritorioId },
-    include: { projetos: { orderBy: { criadoEm: 'desc' } } },
+    where: { id, escritorioId },
+    include: {
+      projetos: {
+        orderBy: { criadoEm: 'desc' },
+        include: { etapas: { select: { status: true, nome: true, ordem: true } } },
+      },
+      eventos: {
+        orderBy: { inicio: 'desc' },
+        include: {
+          tipo: { select: { id: true, nome: true, cor: true } },
+          projeto: { select: { id: true, nome: true } },
+        },
+      },
+    },
   });
-  res.json(cliente);
+
+  // Receitas dos projetos deste cliente
+  const receitas = await prisma.lancamento.groupBy({
+    by: ['pago'],
+    where: { escritorioId, tipo: 'RECEITA', projeto: { clienteId: id } },
+    _sum: { valor: true },
+  });
+  const somaReceitas = (pago) => Number(receitas.find((r) => r.pago === pago)?._sum.valor || 0);
+  const totalContratos = cliente.projetos.reduce((total, p) => total + Number(p.valorContrato || 0), 0);
+
+  const projetos = cliente.projetos.map(({ etapas, ...projeto }) => {
+    const ordenadas = [...etapas].sort((a, b) => a.ordem - b.ordem);
+    const concluidas = ordenadas.filter((e) => e.status === 'CONCLUIDA').length;
+    return {
+      ...projeto,
+      progresso: ordenadas.length ? Math.round((concluidas / ordenadas.length) * 100) : 0,
+      etapaAtual: ordenadas.find((e) => e.status !== 'CONCLUIDA')?.nome || 'Concluído',
+    };
+  });
+
+  res.json({
+    ...cliente,
+    projetos,
+    financeiro: {
+      totalContratos,
+      recebido: somaReceitas(true),
+      aReceber: somaReceitas(false),
+    },
+  });
 });
 
 // POST /api/clientes

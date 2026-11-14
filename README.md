@@ -51,6 +51,7 @@ src/
   utils/http.js        # validação, conversão de datas/valores, HttpError
   utils/escopo.js      # garante que cliente/projeto informado é do escritório logado
   lib/jwt.js           # gera e valida os tokens de login
+  lib/email.js         # envio de e-mail (SMTP ou terminal)
   constants/etapas.js  # etapas padrão de todo projeto novo
   constants/tiposEvento.js  # cores aceitas e tipos de compromisso padrão
   lib/prisma.js        # cliente do banco
@@ -61,7 +62,12 @@ src/
 - Cada conta pertence a um **escritório**. O cadastro cria o escritório, o primeiro usuário e os tipos de compromisso padrão (Reunião, Visita técnica, Visita de obra, Entrega, Outro).
 - Login devolve um **token JWT** (válido por 7 dias). As rotas de dados exigem o header `Authorization: Bearer <token>`.
 - Todas as consultas filtram por `escritorioId`: um escritório nunca vê nem altera dados de outro. Ao receber um `clienteId`/`projetoId`, a API confere se ele é do mesmo escritório.
-- Senhas são guardadas com **bcrypt**. Login e cadastro aceitam até 20 tentativas a cada 15 minutos por IP.
+- Senhas são guardadas com **bcrypt**. Login, cadastro e recuperação de senha aceitam até 20 tentativas a cada 15 minutos por IP.
+- **Recuperação de senha:** o link vale 1 hora e uma única vez; o banco guarda só o hash do token. Trocar a senha (pelo link ou no perfil) encerra as sessões abertas em outros aparelhos (`tokensValidosApos`).
+
+### E-mail
+
+Configure o SMTP no `.env` (`SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `EMAIL_FROM`) e o `APP_URL` (endereço do frontend usado nos links). **Sem `SMTP_HOST`, os e-mails não são enviados: aparecem no terminal da API** — útil em desenvolvimento para copiar o link de redefinição.
 
 ## Endpoints
 
@@ -72,6 +78,10 @@ Base: `http://localhost:3333/api`. Erros retornam `{ "erro": "mensagem" }`.
 | POST | `/auth/cadastro` | Cria escritório + usuário `{ nome, email, senha, nomeEscritorio }` → `{ token, usuario }` |
 | POST | `/auth/login` | `{ email, senha }` → `{ token, usuario }` |
 | GET | `/auth/me` | Usuário logado (exige token) |
+| POST | `/auth/esqueci-senha` | `{ email }` → envia o link de redefinição (resposta igual exista ou não a conta) |
+| POST | `/auth/redefinir-senha` | `{ token, senha }` → troca a senha e devolve `{ token, usuario }` |
+| PUT | `/auth/perfil` | `{ nome, email, senhaAtual? }` (senha atual obrigatória para trocar o e-mail) |
+| PUT | `/auth/senha` | `{ senhaAtual, novaSenha }` → devolve um token novo |
 | GET | `/health` | Verifica se a API está no ar |
 
 As rotas abaixo exigem token:
@@ -79,8 +89,9 @@ As rotas abaixo exigem token:
 | Método | Rota | Descrição |
 |---|---|---|
 | GET | `/dashboard` | Indicadores do painel |
+| GET / PUT | `/escritorio` | Dados do escritório logado / renomear `{ nome }` |
 | GET | `/clientes?busca=` | Lista clientes |
-| GET | `/clientes/:id` | Cliente com seus projetos |
+| GET | `/clientes/:id` | Cliente com projetos (com progresso), compromissos e resumo financeiro |
 | POST / PUT / DELETE | `/clientes[/:id]` | Cria, edita, exclui (bloqueia se tiver projetos) |
 | GET | `/projetos?status=&clienteId=&busca=` | Lista projetos com `progresso` |
 | GET | `/projetos/:id` | Projeto com cliente, etapas, compromissos e lançamentos |
@@ -107,5 +118,4 @@ As rotas abaixo exigem token:
 ## Ainda não implementado
 
 - Convidar outros usuários para o mesmo escritório
-- Recuperação de senha por e-mail
 - Testes automatizados

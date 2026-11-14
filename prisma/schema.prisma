@@ -30,18 +30,38 @@ model Escritorio {
 }
 
 model Usuario {
-  id           Int      @id @default(autoincrement())
-  nome         String
-  email        String   @unique
-  senhaHash    String
-  criadoEm     DateTime @default(now())
-  atualizadoEm DateTime @updatedAt
+  id                Int       @id @default(autoincrement())
+  nome              String
+  email             String    @unique
+  senhaHash         String
+  // Tokens de login emitidos antes desta data deixam de valer (preenchido ao trocar a senha)
+  tokensValidosApos DateTime?
+  criadoEm          DateTime  @default(now())
+  atualizadoEm      DateTime  @updatedAt
 
   escritorioId Int
   escritorio   Escritorio @relation(fields: [escritorioId], references: [id], onDelete: Cascade)
 
+  tokensRedefinicao TokenRedefinicaoSenha[]
+
   @@index([escritorioId])
   @@map("usuarios")
+}
+
+// Links de "esqueci minha senha". Guardamos só o hash do token: quem ler o banco
+// não consegue usar o link. Vale por 1 hora e só uma vez.
+model TokenRedefinicaoSenha {
+  id        Int       @id @default(autoincrement())
+  tokenHash String    @unique
+  expiraEm  DateTime
+  usadoEm   DateTime?
+  criadoEm  DateTime  @default(now())
+
+  usuarioId Int
+  usuario   Usuario @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+
+  @@index([usuarioId])
+  @@map("tokens_redefinicao_senha")
 }
 
 // ---------- Clientes ----------

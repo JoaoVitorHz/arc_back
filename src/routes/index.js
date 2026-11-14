@@ -16,5 +16,6 @@ router.use('/eventos', require('./eventos.routes'));
 router.use('/tipos-evento', require('./tiposEvento.routes'));
 router.use('/lancamentos', require('./lancamentos.routes'));
 router.use('/dashboard', require('./dashboard.routes'));
+router.use('/escritorio', require('./escritorio.routes'));
 
 module.exports = router;
