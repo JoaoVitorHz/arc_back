@@ -115,17 +115,29 @@ router.get('/:id', async (req, res) => {
   res.json({ ...paraQuemVe(req, projeto), progresso: calcularProgresso(projeto.etapas) });
 });
 
-// POST /api/projetos  (cria as etapas padrão junto)
+// Etapas enviadas na criação (ex.: vindas de uma proposta): [{ nome, dataPrevista? }]
+function etapasEnviadas(etapas) {
+  if (etapas === undefined) return null;
+  if (!Array.isArray(etapas) || etapas.length === 0 || etapas.length > 30) {
+    throw new HttpError(400, 'Envie de 1 a 30 etapas');
+  }
+  return etapas.map((etapa, index) => {
+    const nome = String(etapa?.nome ?? '').trim();
+    if (!nome || nome.length > 191) throw new HttpError(400, 'Cada etapa precisa de um nome (até 191 caracteres)');
+    return { nome, ordem: index + 1, dataPrevista: toDate(etapa.dataPrevista) };
+  });
+}
+
+// POST /api/projetos  (cria as etapas padrão junto, ou as enviadas em "etapas")
 router.post('/', async (req, res) => {
   requireFields(req.body, ['nome', 'clienteId']);
+  const etapas = etapasEnviadas(req.body.etapas) || ETAPAS_PADRAO.map((nome, index) => ({ nome, ordem: index + 1 }));
 
   const projeto = await prisma.projeto.create({
     data: {
       ...(await dadosProjeto(req)),
       escritorioId: req.escritorioId,
-      etapas: {
-        create: ETAPAS_PADRAO.map((nome, index) => ({ nome, ordem: index + 1 })),
-      },
+      etapas: { create: etapas },
     },
   });
 

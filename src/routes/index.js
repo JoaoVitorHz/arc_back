@@ -26,5 +26,6 @@ router.use('/eventos', require('./eventos.routes'));
 router.use('/tipos-evento', require('./tiposEvento.routes'));
 router.use('/lancamentos', exigirFinanceiro, require('./lancamentos.routes'));
 router.use('/dashboard', require('./dashboard.routes'));
+router.use('/ia', require('./ia.routes'));
 
 module.exports = router;

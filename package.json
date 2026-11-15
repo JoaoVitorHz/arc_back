@@ -23,7 +23,8 @@
         "express-rate-limit": "^8.7.4",
         "jsonwebtoken": "^9.0.3",
         "multer": "^2.5.0",
-        "nodemailer": "^7.0.13"
+        "nodemailer": "^7.0.13",
+        "openai": "^7.57.0"
     },
     "devDependencies": {
         "prisma": "^6.19.3"
