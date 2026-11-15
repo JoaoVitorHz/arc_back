@@ -357,6 +357,9 @@ model Lancamento {
   pago          Boolean        @default(false)
   dataPagamento DateTime?      @db.Date
   categoria     String?
+  // Lançamentos criados juntos (parcelas ou "todo mês") têm o mesmo serieId,
+  // para editar ou excluir "este e os próximos"
+  serieId       String?        @db.VarChar(36)
   criadoEm      DateTime       @default(now())
   atualizadoEm  DateTime       @updatedAt
 
@@ -368,5 +371,6 @@ model Lancamento {
 
   @@index([escritorioId, vencimento])
   @@index([vencimento])
+  @@index([serieId])
   @@map("lancamentos")
 }

@@ -133,6 +133,18 @@ router.put('/:id', async (req, res) => {
   res.json(projeto);
 });
 
+// PATCH /api/projetos/:id/status  { status: 'ATIVO' | 'PAUSADO' | 'CONCLUIDO' }  (ex.: botão "Concluir projeto")
+router.patch('/:id/status', async (req, res) => {
+  if (!['ATIVO', 'PAUSADO', 'CONCLUIDO'].includes(req.body.status)) {
+    throw new HttpError(400, 'Status inválido');
+  }
+  const projeto = await prisma.projeto.update({
+    where: { id: parseId(req.params.id), escritorioId: req.escritorioId },
+    data: { status: req.body.status },
+  });
+  res.json(projeto);
+});
+
 // DELETE /api/projetos/:id  (etapas e arquivos são apagados; eventos e lançamentos ficam sem projeto)
 router.delete('/:id', async (req, res) => {
   const id = parseId(req.params.id);

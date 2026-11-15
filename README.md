@@ -144,6 +144,7 @@ As rotas abaixo exigem token:
 | GET | `/projetos/:id` | Projeto com cliente, etapas, compromissos e lançamentos |
 | POST | `/projetos` | Cria projeto **com as etapas padrão** |
 | PUT / DELETE | `/projetos/:id` | Edita / exclui |
+| PATCH | `/projetos/:id/status` | Muda o status `{ status: "ATIVO" \| "PAUSADO" \| "CONCLUIDO" }` (botão Concluir projeto) |
 | POST | `/projetos/:id/etapas` | Adiciona etapa ao final |
 | PATCH / DELETE | `/etapas/:id` | Altera status, nome, data prevista, responsável `{ responsavelId }` (alguém da equipe ou null), anotações `{ descricao }` (até 5000 caracteres; guarda quem editou e quando) / remove (com os arquivos dela) |
 | PUT | `/projetos/:id/etapas/ordem` | Nova ordem das etapas `{ ids: [...] }` (todas, cada uma uma vez) |
@@ -158,10 +159,10 @@ As rotas abaixo exigem token:
 | GET | `/tipos-evento` | Tipos de compromisso do escritório, com quantos compromissos usam cada um |
 | POST / PUT | `/tipos-evento[/:id]` | `{ nome, cor }`; cores: blue, purple, pink, red, orange, amber, green, gray |
 | DELETE | `/tipos-evento/:id` | Exclui; os compromissos desse tipo ficam sem tipo |
-| GET | `/lancamentos?mes=AAAA-MM&tipo=&situacao=pago\|pendente` | Lista lançamentos |
+| GET | `/lancamentos?mes=AAAA-MM&tipo=&situacao=pago\|pendente` | Lista lançamentos (ou um período: `inicio=AAAA-MM&fim=AAAA-MM`, usado na exportação). Cada um traz `restantesNaSerie` |
 | GET | `/lancamentos/resumo?mes=AAAA-MM` | Totais do mês |
 | GET | `/lancamentos/fluxo?inicio=AAAA-MM&meses=6` | Fluxo de caixa (pelo vencimento): `{ meses: [{ mes, entradas, saidas, saldo, acumulado }], despesasPorCategoria: [{ categoria, total }] }` |
-| POST / PUT / DELETE | `/lancamentos[/:id]` | Cria, edita, exclui. No POST, `repeticao: { modo: "parcelar" | "repetir", vezes }` cria as parcelas (valor total dividido, "(1/4)" no nome) ou repete todo mês |
+| POST / PUT / DELETE | `/lancamentos[/:id]` | Cria, edita, exclui. No POST, `repeticao: { modo: "parcelar" | "repetir", vezes }` cria as parcelas (valor total dividido, "(1/4)" no nome) ou repete todo mês, com o mesmo `serieId`. No PUT, `aplicarEm: "proximos"` altera também os próximos da série; no DELETE, `?escopo=proximos` exclui também os próximos |
 | PATCH | `/lancamentos/:id/pagamento` | Marca como pago/pendente `{ "pago": true }` |
 
 ## Alterando o banco

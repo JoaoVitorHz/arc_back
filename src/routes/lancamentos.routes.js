@@ -1,3 +1,4 @@
+const crypto = require('crypto');
 const { Router } = require('express');
 const prisma = require('../lib/prisma');
 const { calcularResumoMes, despesasPorCategoria } = require('../services/financeiro.service');
@@ -38,6 +39,7 @@ function aplicarRepeticao(dados, repeticao) {
   // Parcelar divide o valor total; os centavos que sobram vão na última parcela
   const centavos = Math.round(dados.valor * 100);
   const base = Math.floor(centavos / vezes);
+  const serieId = crypto.randomUUID();
 
   return Array.from({ length: vezes }, (_, i) => {
     const valor =
@@ -50,8 +52,53 @@ function aplicarRepeticao(dados, repeticao) {
       vencimento: somarMeses(dados.vencimento, i),
       pago,
       dataPagamento: pago ? dados.dataPagamento : null,
+      serieId,
     };
   });
+}
+
+// "(2/4)" no fim da descrição das parcelas
+const SUFIXO_PARCELA = /\s*\(\d+\/\d+\)$/;
+
+// Mesma data com outro dia do mês (31 vira o último dia em meses mais curtos)
+function comDia(data, dia) {
+  const ultimoDia = new Date(Date.UTC(data.getUTCFullYear(), data.getUTCMonth() + 1, 0)).getUTCDate();
+  return new Date(Date.UTC(data.getUTCFullYear(), data.getUTCMonth(), Math.min(dia, ultimoDia)));
+}
+
+// Lançamentos da mesma série a partir deste (inclusive), em ordem
+function esteEProximos(lancamento) {
+  return prisma.lancamento.findMany({
+    where: {
+      escritorioId: lancamento.escritorioId,
+      serieId: lancamento.serieId,
+      vencimento: { gte: lancamento.vencimento },
+    },
+    orderBy: { vencimento: 'asc' },
+  });
+}
+
+async function buscarLancamento(id, escritorioId) {
+  const lancamento = await prisma.lancamento.findFirst({ where: { id: parseId(id), escritorioId } });
+  if (!lancamento) throw new HttpError(404, 'Lançamento não encontrado');
+  return lancamento;
+}
+
+// Quantos lançamentos da série existem a partir de cada um (inclusive), para a tela
+// oferecer "este e os próximos" só quando faz sentido
+async function comRestantesNaSerie(lancamentos, escritorioId) {
+  const series = [...new Set(lancamentos.map((l) => l.serieId).filter(Boolean))];
+  if (!series.length) return lancamentos;
+  const daSerie = await prisma.lancamento.findMany({
+    where: { escritorioId, serieId: { in: series } },
+    select: { serieId: true, vencimento: true },
+  });
+  return lancamentos.map((l) => ({
+    ...l,
+    restantesNaSerie: l.serieId
+      ? daSerie.filter((s) => s.serieId === l.serieId && s.vencimento >= l.vencimento).length
+      : 1,
+  }));
 }
 
 async function dadosLancamento(body, escritorioId) {
@@ -79,13 +126,23 @@ async function dadosLancamento(body, escritorioId) {
 }
 
 // GET /api/lancamentos?mes=2026-11&tipo=RECEITA&situacao=pendente&projetoId=1
+// Período em vez de um mês (ex.: exportar para o contador): ?inicio=2026-01&fim=2026-12
 router.get('/', async (req, res) => {
-  const { mes, tipo, situacao, projetoId } = req.query;
+  const { mes, inicio, fim, tipo, situacao, projetoId } = req.query;
+
+  let vencimento;
+  if (inicio || fim) {
+    if (!inicio || !fim) throw new HttpError(400, 'Informe o mês inicial e o final');
+    vencimento = { gte: monthRange(inicio).gte, lt: monthRange(fim).lt };
+    if (vencimento.gte >= vencimento.lt) throw new HttpError(400, 'O mês final deve ser depois do inicial');
+  } else if (mes) {
+    vencimento = monthRange(mes);
+  }
 
   const lancamentos = await prisma.lancamento.findMany({
     where: {
       escritorioId: req.escritorioId,
-      vencimento: mes ? monthRange(mes) : undefined,
+      vencimento,
       tipo: tipo || undefined,
       pago: situacao === 'pago' ? true : situacao === 'pendente' ? false : undefined,
       projetoId: projetoId ? parseId(projetoId) : undefined,
@@ -94,7 +151,7 @@ router.get('/', async (req, res) => {
     orderBy: { vencimento: 'asc' },
   });
 
-  res.json(lancamentos);
+  res.json(await comRestantesNaSerie(lancamentos, req.escritorioId));
 });
 
 // GET /api/lancamentos/fluxo?inicio=2026-11&meses=6
@@ -141,14 +198,45 @@ router.post('/', async (req, res) => {
   res.status(201).json(criados.length === 1 ? criados[0] : { criados: criados.length, lancamentos: criados });
 });
 
-// PUT /api/lancamentos/:id
+// PUT /api/lancamentos/:id  (opcional: aplicarEm = 'proximos' altera também os próximos da série)
+// Nos próximos: descrição (mantendo o "(2/4)" de cada um), tipo, valor, categoria, projeto e o dia
+// do vencimento (se mudar o mês, todos andam junto). Pago/não pago de cada um não muda.
 router.put('/:id', async (req, res) => {
   requireFields(req.body, ['descricao', 'tipo', 'valor', 'vencimento']);
-  const lancamento = await prisma.lancamento.update({
-    where: { id: parseId(req.params.id), escritorioId: req.escritorioId },
-    data: await dadosLancamento(req.body, req.escritorioId),
-  });
-  res.json(lancamento);
+  const atual = await buscarLancamento(req.params.id, req.escritorioId);
+  const dados = await dadosLancamento(req.body, req.escritorioId);
+
+  if (req.body.aplicarEm !== 'proximos' || !atual.serieId) {
+    const lancamento = await prisma.lancamento.update({ where: { id: atual.id }, data: dados });
+    return res.json({ ...lancamento, atualizados: 1 });
+  }
+
+  const proximos = (await esteEProximos(atual)).filter((l) => l.id !== atual.id);
+  const mesesDeslocados =
+    dados.vencimento.getUTCFullYear() * 12 +
+    dados.vencimento.getUTCMonth() -
+    (atual.vencimento.getUTCFullYear() * 12 + atual.vencimento.getUTCMonth());
+  const dia = dados.vencimento.getUTCDate();
+  const base = dados.descricao.replace(SUFIXO_PARCELA, '');
+
+  const [lancamento] = await prisma.$transaction([
+    prisma.lancamento.update({ where: { id: atual.id }, data: dados }),
+    ...proximos.map((l) => {
+      const sufixo = l.descricao.match(SUFIXO_PARCELA)?.[0] ?? '';
+      return prisma.lancamento.update({
+        where: { id: l.id },
+        data: {
+          descricao: base + sufixo,
+          tipo: dados.tipo,
+          valor: dados.valor,
+          categoria: dados.categoria,
+          projetoId: dados.projetoId,
+          vencimento: comDia(somarMeses(l.vencimento, mesesDeslocados), dia),
+        },
+      });
+    }),
+  ]);
+  res.json({ ...lancamento, atualizados: proximos.length + 1 });
 });
 
 // PATCH /api/lancamentos/:id/pagamento  { pago: true | false }
@@ -161,12 +249,13 @@ router.patch('/:id/pagamento', async (req, res) => {
   res.json(lancamento);
 });
 
-// DELETE /api/lancamentos/:id
+// DELETE /api/lancamentos/:id  (?escopo=proximos exclui também os próximos da série)
 router.delete('/:id', async (req, res) => {
-  await prisma.lancamento.delete({
-    where: { id: parseId(req.params.id), escritorioId: req.escritorioId },
-  });
-  res.status(204).end();
+  const atual = await buscarLancamento(req.params.id, req.escritorioId);
+  const ids =
+    req.query.escopo === 'proximos' && atual.serieId ? (await esteEProximos(atual)).map((l) => l.id) : [atual.id];
+  const { count } = await prisma.lancamento.deleteMany({ where: { id: { in: ids }, escritorioId: req.escritorioId } });
+  res.json({ excluidos: count });
 });
 
 module.exports = router;
