@@ -60,6 +60,31 @@ async function gerarJson({ instrucoes, entrada, nome, schema }) {
   return JSON.parse(mensagem.content);
 }
 
+// Voz do assistente (texto -> mp3). OPENAI_VOZ e OPENAI_MODELO_VOZ são opcionais.
+const INSTRUCOES_VOZ =
+  'Fale em português do Brasil, com tom cordial e natural, ritmo tranquilo, como uma assistente de escritório. ' +
+  'Leia datas como "16/11" por extenso ("dia 16 de novembro"), "14h" como "14 horas" e valores em reais por extenso.';
+
+async function falar(texto) {
+  const openai = obterCliente();
+  try {
+    const resposta = await openai.audio.speech.create({
+      model: process.env.OPENAI_MODELO_VOZ || 'gpt-4o-mini-tts',
+      voice: process.env.OPENAI_VOZ || 'marin',
+      input: texto,
+      instructions: INSTRUCOES_VOZ,
+      response_format: 'mp3',
+    });
+    return Buffer.from(await resposta.arrayBuffer());
+  } catch (error) {
+    if (error instanceof OpenAI.APIError) {
+      console.error(`[ia] voz OpenAI ${error.status}: ${error.message}`);
+      throw new HttpError(502, 'Não foi possível gerar a voz agora.', 'IA_ERRO');
+    }
+    throw error;
+  }
+}
+
 // Cada chamada custa dinheiro: limite por pessoa (60 a cada 10 minutos)
 const limiteIa = rateLimit({
   windowMs: 10 * 60 * 1000,
@@ -70,4 +95,14 @@ const limiteIa = rateLimit({
   message: { erro: 'Muitos pedidos à IA em pouco tempo. Aguarde alguns minutos.' },
 });
 
-module.exports = { iaConfigurada, modelo, conversar, gerarJson, limiteIa };
+// A voz vem em vários pedidos por resposta (um por trecho): limite próprio, mais folgado
+const limiteVoz = rateLimit({
+  windowMs: 10 * 60 * 1000,
+  limit: 200,
+  keyGenerator: (req) => `voz-${req.usuario.id}`,
+  standardHeaders: 'draft-8',
+  legacyHeaders: false,
+  message: { erro: 'Muitos pedidos de voz em pouco tempo. Aguarde alguns minutos.' },
+});
+
+module.exports = { iaConfigurada, modelo, conversar, gerarJson, falar, limiteIa, limiteVoz };

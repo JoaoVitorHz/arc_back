@@ -103,7 +103,7 @@ Configure o SMTP no `.env` (`SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, 
 
 ## Inteligência artificial (OpenAI)
 
-Configure `OPENAI_API_KEY` no `.env` (e, se quiser, `OPENAI_MODEL`; padrão `gpt-5.4-mini`). Sem a chave, as rotas de IA respondem 503 e o front esconde os botões. Usa a API Chat Completions do SDK `openai`.
+Configure `OPENAI_API_KEY` no `.env` (e, se quiser, `OPENAI_MODEL`, padrão `gpt-5.4-mini`; para a voz, `OPENAI_VOZ`, padrão `marin`, e `OPENAI_MODELO_VOZ`, padrão `gpt-4o-mini-tts`). Sem a chave, as rotas de IA respondem 503 e o front esconde os botões. Usa a API Chat Completions do SDK `openai`.
 
 - **Assistente** (`services/assistente.service.js`): conversa com *function calling*. Ferramentas de leitura (projetos, clientes, etapas, agenda, equipe e, para quem vê o financeiro, resumo e lançamentos) sempre filtradas pelo escritório. Ferramentas de ação (compromisso, cliente, projeto, etapa, lançamento, pagamento) **não executam**: devolvem um cartão que o front mostra e, ao confirmar, chama a rota normal da API, com as permissões de quem está logado.
 - **Proposta e relatório** (`services/documentosIa.service.js`): respostas em JSON com *structured outputs* (schema estrito). A proposta usa os projetos do escritório (valores, tipos e prazos) para sugerir valor e prazos; o relatório usa etapas, revisões, compromissos e arquivos recentes, sem valores.
@@ -175,6 +175,7 @@ As rotas abaixo exigem token:
 | PATCH | `/lancamentos/:id/pagamento` | Marca como pago/pendente `{ "pago": true }` |
 | GET | `/ia` | `{ ativa }`: se há chave de IA configurada |
 | POST | `/ia/assistente` | `{ mensagens: [{ role: "user" \| "assistant", content }], fuso }` -> `{ resposta, acoes }`. Ações são só propostas: `{ titulo, linhas, requisicao: { metodo, rota, corpo, datasLocais? } }`, executadas pelo front na rota normal depois que a pessoa confirma |
+| POST | `/ia/voz` | `{ texto }` (até 1.200 caracteres) -> áudio mp3 da voz do assistente. Limite próprio: 200 pedidos por pessoa a cada 10 minutos |
 | POST | `/ia/proposta` | `{ descricao, tipo, clienteId? }` -> `{ proposta, baseadoEm }` (só quem vê o financeiro) |
 | POST | `/ia/relatorio/:projetoId` | `{ observacoes?, fuso? }` -> `{ assunto, mensagem }`: e-mail de andamento para o cliente, sem valores |
 

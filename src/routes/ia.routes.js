@@ -1,15 +1,24 @@
 const { Router } = require('express');
-const { iaConfigurada, limiteIa } = require('../lib/ia');
+const { iaConfigurada, falar, limiteIa, limiteVoz } = require('../lib/ia');
 const { exigirFinanceiro } = require('../middlewares/permissoes');
 const { responder } = require('../services/assistente.service');
 const { gerarProposta, gerarRelatorio } = require('../services/documentosIa.service');
-const { parseId } = require('../utils/http');
+const { HttpError, parseId } = require('../utils/http');
 
 const router = Router();
 
 // GET /api/ia  -> { ativa } (o front só mostra os recursos de IA quando há chave configurada)
 router.get('/', (req, res) => {
   res.json({ ativa: iaConfigurada() });
+});
+
+// POST /api/ia/voz  { texto }  -> audio/mpeg (a voz de um trecho da resposta do assistente)
+router.post('/voz', limiteVoz, async (req, res) => {
+  const texto = String(req.body.texto || '').trim();
+  if (!texto) throw new HttpError(400, 'Envie o texto');
+  if (texto.length > 1200) throw new HttpError(400, 'Trecho longo demais para a voz (máximo 1.200 caracteres)');
+  const audio = await falar(texto);
+  res.set('Cache-Control', 'no-store').type('audio/mpeg').send(audio);
 });
 
 router.use(limiteIa);
