@@ -62,7 +62,7 @@ async function gerarJson({ instrucoes, entrada, nome, schema }) {
 
 // Voz do assistente (texto -> mp3). OPENAI_VOZ e OPENAI_MODELO_VOZ são opcionais.
 const INSTRUCOES_VOZ =
-  'Fale em português do Brasil, com tom cordial e natural, ritmo tranquilo, como uma assistente de escritório. ' +
+  'Fale em português do Brasil, com tom cordial e natural, ritmo ágil e sem pausas longas, como uma assistente de escritório eficiente. ' +
   'Leia datas como "16/11" por extenso ("dia 16 de novembro"), "14h" como "14 horas" e valores em reais por extenso.';
 
 async function falar(texto) {
