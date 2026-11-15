@@ -95,6 +95,26 @@ const limiteIa = rateLimit({
   message: { erro: 'Muitos pedidos à IA em pouco tempo. Aguarde alguns minutos.' },
 });
 
+// Fala da pessoa -> texto. A "dica" (nomes de clientes e projetos) ajuda a acertar nomes próprios.
+async function transcrever({ audio, nomeArquivo, tipo, dica }) {
+  const openai = obterCliente();
+  try {
+    const resultado = await openai.audio.transcriptions.create({
+      model: process.env.OPENAI_MODELO_TRANSCRICAO || 'gpt-4o-mini-transcribe',
+      file: await OpenAI.toFile(audio, nomeArquivo, { type: tipo }),
+      language: 'pt',
+      ...(dica && { prompt: dica }),
+    });
+    return (resultado.text || '').trim();
+  } catch (error) {
+    if (error instanceof OpenAI.APIError) {
+      console.error(`[ia] transcrição OpenAI ${error.status}: ${error.message}`);
+      throw new HttpError(502, 'Não foi possível entender o áudio agora. Tente de novo.', 'IA_ERRO');
+    }
+    throw error;
+  }
+}
+
 // A voz vem em vários pedidos por resposta (um por trecho): limite próprio, mais folgado
 const limiteVoz = rateLimit({
   windowMs: 10 * 60 * 1000,
@@ -105,4 +125,4 @@ const limiteVoz = rateLimit({
   message: { erro: 'Muitos pedidos de voz em pouco tempo. Aguarde alguns minutos.' },
 });
 
-module.exports = { iaConfigurada, modelo, conversar, gerarJson, falar, limiteIa, limiteVoz };
+module.exports = { iaConfigurada, modelo, conversar, gerarJson, falar, transcrever, limiteIa, limiteVoz };

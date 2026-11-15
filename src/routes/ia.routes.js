@@ -1,5 +1,7 @@
 const { Router } = require('express');
-const { iaConfigurada, falar, limiteIa, limiteVoz } = require('../lib/ia');
+const multer = require('multer');
+const prisma = require('../lib/prisma');
+const { iaConfigurada, falar, transcrever, limiteIa, limiteVoz } = require('../lib/ia');
 const { exigirFinanceiro } = require('../middlewares/permissoes');
 const { responder } = require('../services/assistente.service');
 const { gerarProposta, gerarRelatorio } = require('../services/documentosIa.service');
@@ -19,6 +21,42 @@ router.post('/voz', limiteVoz, async (req, res) => {
   if (texto.length > 1200) throw new HttpError(400, 'Trecho longo demais para a voz (máximo 1.200 caracteres)');
   const audio = await falar(texto);
   res.set('Cache-Control', 'no-store').type('audio/mpeg').send(audio);
+});
+
+// Áudio gravado no navegador (webm/ogg/mp4), guardado só na memória e descartado depois
+const uploadAudio = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024, files: 1 },
+  fileFilter(req, arquivo, aceitar) {
+    if (!arquivo.mimetype.startsWith('audio/') && arquivo.mimetype !== 'video/webm') {
+      return aceitar(new HttpError(400, 'Envie um arquivo de áudio'));
+    }
+    aceitar(null, true);
+  },
+});
+
+const EXTENSOES_AUDIO = { 'audio/webm': 'webm', 'video/webm': 'webm', 'audio/ogg': 'ogg', 'audio/mp4': 'mp4', 'audio/mpeg': 'mp3', 'audio/wav': 'wav' };
+
+// POST /api/ia/transcrever  (multipart, campo "audio")  -> { texto }
+router.post('/transcrever', limiteVoz, uploadAudio.single('audio'), async (req, res) => {
+  if (!req.file?.size) throw new HttpError(400, 'Envie o áudio no campo "audio"');
+  const tipo = req.file.mimetype.split(';')[0];
+
+  // nomes do escritório (clientes e projetos ativos) para a transcrição acertar a grafia
+  const [clientes, projetos] = await Promise.all([
+    prisma.cliente.findMany({ where: { escritorioId: req.escritorioId }, select: { nome: true }, orderBy: { atualizadoEm: 'desc' }, take: 40 }),
+    prisma.projeto.findMany({ where: { escritorioId: req.escritorioId, status: 'ATIVO' }, select: { nome: true }, take: 40 }),
+  ]);
+  const nomes = [...clientes, ...projetos].map((n) => n.nome);
+  const dica = nomes.length ? `Conversa de um escritório de arquitetura. Nomes citados: ${nomes.join(', ')}.` : null;
+
+  const texto = await transcrever({
+    audio: req.file.buffer,
+    nomeArquivo: `fala.${EXTENSOES_AUDIO[tipo] || 'webm'}`,
+    tipo,
+    dica,
+  });
+  res.json({ texto });
 });
 
 router.use(limiteIa);
