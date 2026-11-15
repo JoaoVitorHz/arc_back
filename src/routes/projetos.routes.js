@@ -3,6 +3,7 @@ const prisma = require('../lib/prisma');
 const armazenamento = require('../lib/armazenamento');
 const { ETAPAS_PADRAO } = require('../constants/etapas');
 const { garantirDoEscritorio } = require('../utils/escopo');
+const { podeVerFinanceiro } = require('../middlewares/permissoes');
 const {
   HttpError,
   parseId,
@@ -28,7 +29,15 @@ function calcularProgresso(etapas) {
   return Math.round((concluidas / etapas.length) * 100);
 }
 
-async function dadosProjeto(body, escritorioId) {
+// Sem acesso ao financeiro: o projeto vai sem o valor do contrato e sem os lançamentos
+function paraQuemVe(req, projeto) {
+  if (podeVerFinanceiro(req.usuario)) return projeto;
+  const { valorContrato, lancamentos, ...resto } = projeto;
+  return resto;
+}
+
+async function dadosProjeto(req) {
+  const { body, escritorioId } = req;
   const dados = {
     nome: body.nome?.trim(),
     tipo: body.tipo || undefined,
@@ -40,6 +49,8 @@ async function dadosProjeto(body, escritorioId) {
     observacoes: emptyToNull(body.observacoes),
     clienteId: parseId(body.clienteId),
   };
+  // quem não vê o financeiro não mexe no valor (o formulário dele nem mostra o campo)
+  if (!podeVerFinanceiro(req.usuario)) delete dados.valorContrato;
   await garantirDoEscritorio('cliente', dados.clienteId, escritorioId);
   return dados;
 }
@@ -64,7 +75,7 @@ router.get('/', async (req, res) => {
 
   res.json(
     projetos.map(({ etapas, ...projeto }) => ({
-      ...projeto,
+      ...paraQuemVe(req, projeto),
       totalEtapas: etapas.length,
       etapasAtrasadas: contarAtrasadas(etapas),
       progresso: calcularProgresso(etapas),
@@ -101,7 +112,7 @@ router.get('/:id', async (req, res) => {
     },
   });
 
-  res.json({ ...projeto, progresso: calcularProgresso(projeto.etapas) });
+  res.json({ ...paraQuemVe(req, projeto), progresso: calcularProgresso(projeto.etapas) });
 });
 
 // POST /api/projetos  (cria as etapas padrão junto)
@@ -110,7 +121,7 @@ router.post('/', async (req, res) => {
 
   const projeto = await prisma.projeto.create({
     data: {
-      ...(await dadosProjeto(req.body, req.escritorioId)),
+      ...(await dadosProjeto(req)),
       escritorioId: req.escritorioId,
       etapas: {
         create: ETAPAS_PADRAO.map((nome, index) => ({ nome, ordem: index + 1 })),
@@ -118,7 +129,7 @@ router.post('/', async (req, res) => {
     },
   });
 
-  res.status(201).json(projeto);
+  res.status(201).json(paraQuemVe(req, projeto));
 });
 
 // PUT /api/projetos/:id
@@ -127,10 +138,10 @@ router.put('/:id', async (req, res) => {
 
   const projeto = await prisma.projeto.update({
     where: { id: parseId(req.params.id), escritorioId: req.escritorioId },
-    data: await dadosProjeto(req.body, req.escritorioId),
+    data: await dadosProjeto(req),
   });
 
-  res.json(projeto);
+  res.json(paraQuemVe(req, projeto));
 });
 
 // PATCH /api/projetos/:id/status  { status: 'ATIVO' | 'PAUSADO' | 'CONCLUIDO' }  (ex.: botão "Concluir projeto")
@@ -142,7 +153,7 @@ router.patch('/:id/status', async (req, res) => {
     where: { id: parseId(req.params.id), escritorioId: req.escritorioId },
     data: { status: req.body.status },
   });
-  res.json(projeto);
+  res.json(paraQuemVe(req, projeto));
 });
 
 // DELETE /api/projetos/:id  (etapas e arquivos são apagados; eventos e lançamentos ficam sem projeto)

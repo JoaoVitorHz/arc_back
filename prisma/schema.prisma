@@ -49,6 +49,9 @@ model Usuario {
   email             String       @unique
   senhaHash         String
   papel             PapelUsuario @default(ADMIN)
+  // Membro que pode ver o financeiro (lançamentos e valores de contrato). Administradores sempre veem.
+  // Volta a "não" quando a pessoa sai ou entra em outro escritório.
+  verFinanceiro     Boolean      @default(false)
   // Conta criada pelo administrador com senha provisória: precisa criar a própria senha ao entrar
   deveTrocarSenha   Boolean      @default(false)
   // Tokens de login emitidos antes desta data deixam de valer (preenchido ao trocar a senha)

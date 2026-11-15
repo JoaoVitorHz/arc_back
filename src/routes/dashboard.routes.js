@@ -2,6 +2,7 @@ const { Router } = require('express');
 const prisma = require('../lib/prisma');
 const { calcularResumoMes } = require('../services/financeiro.service');
 const { currentMonth } = require('../utils/http');
+const { podeVerFinanceiro } = require('../middlewares/permissoes');
 
 const router = Router();
 
@@ -10,6 +11,8 @@ router.get('/', async (req, res) => {
   const agora = new Date();
   const hojeUtc = new Date(Date.UTC(agora.getFullYear(), agora.getMonth(), agora.getDate()));
   const { escritorioId } = req;
+  // sem acesso ao financeiro, o painel vem sem os números de dinheiro (resumoMes e contasVencidas = null)
+  const verFinanceiro = podeVerFinanceiro(req.usuario);
 
   const [projetosAtivos, totalClientes, projetos, proximosEventos, contasVencidas, resumoMes, minhasEtapas] =
     await Promise.all([
@@ -34,8 +37,10 @@ router.get('/', async (req, res) => {
         orderBy: { inicio: 'asc' },
         take: 5,
       }),
-      prisma.lancamento.count({ where: { escritorioId, pago: false, vencimento: { lt: hojeUtc } } }),
-      calcularResumoMes(currentMonth(), escritorioId),
+      verFinanceiro
+        ? prisma.lancamento.count({ where: { escritorioId, pago: false, vencimento: { lt: hojeUtc } } })
+        : null,
+      verFinanceiro ? calcularResumoMes(currentMonth(), escritorioId) : null,
       // Etapas sob minha responsabilidade, ainda não concluídas, em projetos ativos
       prisma.etapa.findMany({
         where: {

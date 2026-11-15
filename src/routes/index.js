@@ -1,6 +1,6 @@
 const { Router } = require('express');
 const autenticar = require('../middlewares/autenticar');
-const { exigirEscritorio } = require('../middlewares/permissoes');
+const { exigirEscritorio, exigirFinanceiro } = require('../middlewares/permissoes');
 
 const router = Router();
 
@@ -24,7 +24,7 @@ router.use('/projetos', require('./projetos.routes'));
 router.use('/etapas', require('./etapas.routes'));
 router.use('/eventos', require('./eventos.routes'));
 router.use('/tipos-evento', require('./tiposEvento.routes'));
-router.use('/lancamentos', require('./lancamentos.routes'));
+router.use('/lancamentos', exigirFinanceiro, require('./lancamentos.routes'));
 router.use('/dashboard', require('./dashboard.routes'));
 
 module.exports = router;

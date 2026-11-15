@@ -25,6 +25,7 @@ const selecaoUsuario = {
   nome: true,
   email: true,
   papel: true,
+  verFinanceiro: true,
   deveTrocarSenha: true,
   escritorioId: true,
   escritorio: { select: { id: true, nome: true } },

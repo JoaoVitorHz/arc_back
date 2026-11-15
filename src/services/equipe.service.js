@@ -35,7 +35,7 @@ async function entrarNoEscritorio(usuarioId, destinoId, papel) {
   if (usuario.escritorioId === destinoId) return; // já faz parte
 
   if (!usuario.escritorioId) {
-    await prisma.usuario.update({ where: { id: usuarioId }, data: { escritorioId: destinoId, papel } });
+    await prisma.usuario.update({ where: { id: usuarioId }, data: { escritorioId: destinoId, papel, verFinanceiro: false } });
     return;
   }
 
@@ -57,7 +57,7 @@ async function entrarNoEscritorio(usuarioId, destinoId, papel) {
 
   // Escritório vazio: não há nada a preservar
   await prisma.$transaction([
-    prisma.usuario.update({ where: { id: usuarioId }, data: { escritorioId: destinoId, papel } }),
+    prisma.usuario.update({ where: { id: usuarioId }, data: { escritorioId: destinoId, papel, verFinanceiro: false } }),
     prisma.escritorio.delete({ where: { id: atual.id } }), // leva junto tipos de compromisso e convites
   ]);
 }

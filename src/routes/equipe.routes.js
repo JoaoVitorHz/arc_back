@@ -21,7 +21,15 @@ const router = Router();
 const VALIDADE_CONVITE_DIAS = 7;
 const PAPEIS = ['ADMIN', 'MEMBRO'];
 
-const selecaoMembro = { id: true, nome: true, email: true, papel: true, deveTrocarSenha: true, criadoEm: true };
+const selecaoMembro = {
+  id: true,
+  nome: true,
+  email: true,
+  papel: true,
+  verFinanceiro: true,
+  deveTrocarSenha: true,
+  criadoEm: true,
+};
 
 function validarPapel(papel) {
   if (!PAPEIS.includes(papel)) throw new HttpError(400, 'Papel inválido');
@@ -218,17 +226,28 @@ async function membroDaEquipe(req) {
   return membro;
 }
 
-// PATCH /api/equipe/membros/:id  { papel }
+// PATCH /api/equipe/membros/:id  { papel?, verFinanceiro? }  (um dos dois ou ambos)
 router.patch('/membros/:id', async (req, res) => {
-  const papel = validarPapel(req.body.papel);
+  const { papel, verFinanceiro } = req.body;
+  if (papel === undefined && verFinanceiro === undefined) {
+    throw new HttpError(400, 'Envie o papel ou a permissão do financeiro');
+  }
+  if (papel !== undefined) validarPapel(papel);
+  if (verFinanceiro !== undefined && typeof verFinanceiro !== 'boolean') {
+    throw new HttpError(400, 'verFinanceiro deve ser true ou false');
+  }
   const membro = await membroDaEquipe(req);
 
-  if (membro.papel === 'ADMIN' && papel !== 'ADMIN') {
+  if (membro.papel === 'ADMIN' && papel !== undefined && papel !== 'ADMIN') {
     const { admins } = await resumoDoEscritorio(req.escritorioId);
     if (admins === 1) throw new HttpError(400, 'O escritório precisa ter pelo menos um administrador');
   }
 
-  const atualizado = await prisma.usuario.update({ where: { id: membro.id }, data: { papel }, select: selecaoMembro });
+  const atualizado = await prisma.usuario.update({
+    where: { id: membro.id },
+    data: { papel, verFinanceiro },
+    select: selecaoMembro,
+  });
   res.json(atualizado);
 });
 

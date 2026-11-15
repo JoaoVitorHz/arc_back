@@ -1,6 +1,7 @@
 const { Router } = require('express');
 const prisma = require('../lib/prisma');
 const { HttpError, parseId, requireFields, emptyToNull } = require('../utils/http');
+const { podeVerFinanceiro } = require('../middlewares/permissoes');
 
 const router = Router();
 
@@ -60,6 +61,22 @@ router.get('/:id', async (req, res) => {
     },
   });
 
+  const projetos = cliente.projetos.map(({ etapas, valorContrato, ...projeto }) => {
+    const ordenadas = [...etapas].sort((a, b) => a.ordem - b.ordem);
+    const concluidas = ordenadas.filter((e) => e.status === 'CONCLUIDA').length;
+    return {
+      ...projeto,
+      ...(podeVerFinanceiro(req.usuario) && { valorContrato }),
+      progresso: ordenadas.length ? Math.round((concluidas / ordenadas.length) * 100) : 0,
+      etapaAtual: ordenadas.find((e) => e.status !== 'CONCLUIDA')?.nome || 'Concluído',
+    };
+  });
+
+  // Sem acesso ao financeiro: sem valores de contrato e sem o resumo financeiro
+  if (!podeVerFinanceiro(req.usuario)) {
+    return res.json({ ...cliente, projetos, financeiro: null });
+  }
+
   // Receitas dos projetos deste cliente
   const receitas = await prisma.lancamento.groupBy({
     by: ['pago'],
@@ -68,16 +85,6 @@ router.get('/:id', async (req, res) => {
   });
   const somaReceitas = (pago) => Number(receitas.find((r) => r.pago === pago)?._sum.valor || 0);
   const totalContratos = cliente.projetos.reduce((total, p) => total + Number(p.valorContrato || 0), 0);
-
-  const projetos = cliente.projetos.map(({ etapas, ...projeto }) => {
-    const ordenadas = [...etapas].sort((a, b) => a.ordem - b.ordem);
-    const concluidas = ordenadas.filter((e) => e.status === 'CONCLUIDA').length;
-    return {
-      ...projeto,
-      progresso: ordenadas.length ? Math.round((concluidas / ordenadas.length) * 100) : 0,
-      etapaAtual: ordenadas.find((e) => e.status !== 'CONCLUIDA')?.nome || 'Concluído',
-    };
-  });
 
   res.json({
     ...cliente,

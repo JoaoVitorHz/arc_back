@@ -34,7 +34,7 @@ router.post('/', async (req, res) => {
   if (!nome) throw new HttpError(400, 'Informe o nome do escritório');
 
   const escritorio = await prisma.escritorio.create({ data: dadosNovoEscritorio(nome), select: { id: true } });
-  await prisma.usuario.update({ where: { id: req.usuario.id }, data: { escritorioId: escritorio.id, papel: 'ADMIN' } });
+  await prisma.usuario.update({ where: { id: req.usuario.id }, data: { escritorioId: escritorio.id, papel: 'ADMIN', verFinanceiro: false } });
   res.status(201).json({ usuario: await usuarioAtualizado(req.usuario.id) });
 });
 
@@ -60,7 +60,7 @@ router.post('/:id/restaurar', async (req, res) => {
 
   await prisma.$transaction([
     prisma.escritorio.update({ where: { id }, data: { encerradoEm: null, encerradoPorId: null } }),
-    prisma.usuario.update({ where: { id: req.usuario.id }, data: { escritorioId: id, papel: 'ADMIN' } }),
+    prisma.usuario.update({ where: { id: req.usuario.id }, data: { escritorioId: id, papel: 'ADMIN', verFinanceiro: false } }),
   ]);
   res.json({ usuario: await usuarioAtualizado(req.usuario.id) });
 });

@@ -89,6 +89,7 @@ uploads/               # arquivos enviados (fora do Git)
 ## Equipe
 
 - **Papéis:** `ADMIN` (gerencia equipe e escritório) e `MEMBRO` (usa o sistema). Quem cria a conta é administrador. Rotas de gestão usam o middleware `exigirAdmin`.
+- **Financeiro:** administradores sempre veem; membros só com `verFinanceiro` ligado pelo administrador (volta a `false` ao entrar em outro escritório). Sem a permissão: `/lancamentos/*` responde 403 (`SEM_FINANCEIRO`, middleware `exigirFinanceiro`); projetos vêm sem `valorContrato` e `lancamentos` (e o valor enviado é ignorado ao salvar); o cliente vem com `financeiro: null`; o painel com `resumoMes` e `contasVencidas` nulos.
 - **Entrar na equipe:** por **convite** (link de 7 dias, uso único, só o hash fica no banco) ou pela **conta criada pelo administrador** (senha provisória; `deveTrocarSenha` obriga a criar a própria no primeiro acesso).
 - **Aceitar convite tendo conta:** sem escritório → entra; escritório vazio (só a pessoa e nenhum dado) → ele é apagado e a pessoa entra; com dados → precisa **encerrar**; com equipe → precisa **sair**. Regras em `services/equipe.service.js`.
 - **Sair:** qualquer pessoa, menos o último administrador. **Remover:** o administrador tira alguém da equipe (a conta continua existindo).
@@ -136,7 +137,7 @@ As rotas abaixo exigem token:
 | POST | `/equipe/convites/:id/novo-link` | Gera outro link e reenvia o e-mail (admin) |
 | DELETE | `/equipe/convites/:id` | Cancela o convite (admin) |
 | POST | `/equipe/membros` | Cria conta com senha provisória `{ nome, email, papel, senha }` (admin) |
-| PATCH / DELETE | `/equipe/membros/:id` | Troca o papel `{ papel }` / remove da equipe (admin) |
+| PATCH / DELETE | `/equipe/membros/:id` | Troca o papel e/ou a permissão do financeiro `{ papel?, verFinanceiro? }` / remove da equipe (admin) |
 | GET | `/clientes?busca=` | Lista clientes |
 | GET | `/clientes/:id` | Cliente com projetos (com progresso), compromissos e resumo financeiro |
 | POST / PUT / DELETE | `/clientes[/:id]` | Cria, edita, exclui (bloqueia se tiver projetos) |
