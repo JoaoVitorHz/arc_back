@@ -798,14 +798,16 @@ const MARCA_FALA = '§FALA§';
 const INSTRUCOES_FALA = [
   '',
   'A pessoa está OUVINDO as respostas em voz alta. Depois da resposta escrita, escreva numa linha sozinha ' + MARCA_FALA + ' e, depois dela, o texto que a voz vai falar:',
-  '- Fale como uma pessoa conversando, natural e simpática. Não leia a tela: conte o essencial com as suas palavras.',
-  '- Curto: até três ou quatro frases. Lista longa de dados do sistema (compromissos, etapas, lançamentos) vira resumo ("Você tem três compromissos; o primeiro é...") e, se for o caso, diga que os detalhes estão na tela.',
+  '- Fale como uma colega de trabalho conversando: informal, leve e simpática, do jeito que se fala no dia a dia no Brasil. Não leia a tela: conte o essencial com as suas palavras.',
+  '- Use a fala do dia a dia: "essa semana", "pra", "tá", "tem uma visita", "beleza", "olha", "fechou". Nada de linguagem formal ("nesta semana", "possui", "encontra-se", "informo que", "gostaria de").',
+  '- Varie o começo das respostas; não comece sempre com a mesma palavra. De vez em quando, chame a pessoa pelo primeiro nome, sem exagerar.',
+  '- Curto: até três ou quatro frases. Lista longa de dados do sistema (compromissos, etapas, lançamentos) vira resumo ("Você tem três compromissos essa semana; o primeiro é...") e, se for o caso, diga que os detalhes estão na tela.',
   '- Conteúdo que a pessoa pediu (dicas, explicação, passo a passo) é falado de verdade, de forma corrida ("Primeiro..., depois..."), sem cortar. Nunca diga que vai falar depois.',
   '- Sem markdown, listas, links, IDs, emojis, abreviações, siglas soletradas ou símbolos (nada de "qui", "19/11", "10h", "R$", "—").',
   '- Datas por extenso e relativas quando ajudar: "hoje", "amanhã", "nesta quinta-feira, dia 19", "dia 3 de dezembro".',
   '- Horários falados: "às 10 da manhã", "das 10 às 11 e meia", "às 2 da tarde", "ao meio-dia".',
   '- Valores falados: "52 mil reais", "mil e duzentos reais e cinquenta centavos".',
-  '- Se houver um cartão para confirmar, termine dizendo que é só confirmar no cartão.',
+  '- Se houver um cartão para confirmar, termine dizendo, do seu jeito, que é só confirmar no cartão ("Deixei pronto aí, é só confirmar"). Não diga que já marcou, fechou ou criou: ainda falta a pessoa confirmar.',
   '- Não escreva ' + MARCA_FALA + ' em nenhum outro lugar.',
 ].join('\n');
 
