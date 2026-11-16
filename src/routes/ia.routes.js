@@ -2,9 +2,9 @@ const { Router } = require('express');
 const multer = require('multer');
 const prisma = require('../lib/prisma');
 const { iaConfigurada, falar, transcrever, limiteIa, limiteVoz } = require('../lib/ia');
-const { exigirFinanceiro } = require('../middlewares/permissoes');
 const { responder } = require('../services/assistente.service');
-const { gerarProposta, gerarRelatorio } = require('../services/documentosIa.service');
+const { gerarRelatorio } = require('../services/documentosIa.service');
+const { analisarBriefing } = require('../services/briefingIa.service');
 const { HttpError, parseId } = require('../utils/http');
 
 const router = Router();
@@ -67,9 +67,11 @@ router.post('/assistente', async (req, res) => {
   res.json(await responder({ req, mensagens: req.body.mensagens, fuso: req.body.fuso }));
 });
 
-// POST /api/ia/proposta  { descricao, tipo, clienteId? }  (usa valores de contrato: só quem vê o financeiro)
-router.post('/proposta', exigirFinanceiro, async (req, res) => {
-  res.json(await gerarProposta({ req, body: req.body }));
+// POST /api/ia/briefing  { briefing, tipo?, clienteId? }
+// -> { pacote, clienteExistente, baseadoEm }: tudo para o "Novo projeto com IA" revisar (nada é criado aqui).
+// Quem não vê o financeiro recebe o pacote sem valores e sem parcelas.
+router.post('/briefing', async (req, res) => {
+  res.json(await analisarBriefing({ req, body: req.body }));
 });
 
 // POST /api/ia/relatorio/:projetoId  { observacoes?, fuso? }  -> { assunto, mensagem }

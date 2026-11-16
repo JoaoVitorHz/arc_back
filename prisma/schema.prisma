@@ -164,6 +164,10 @@ model Projeto {
   dataInicio      DateTime?     @db.Date
   previsaoEntrega DateTime?     @db.Date
   observacoes     String?       @db.Text
+  // Projeto criado pelo "Novo projeto com IA": briefing original, resumo, programa de necessidades,
+  // documentos a pedir ao cliente (com o que já chegou) e a proposta. Fora das consultas por padrão
+  // (omit em lib/prisma.js); só a página do projeto pede.
+  briefing        Json?
   criadoEm        DateTime      @default(now())
   atualizadoEm    DateTime      @updatedAt
 

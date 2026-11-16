@@ -106,7 +106,9 @@ Configure o SMTP no `.env` (`SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, 
 Configure `OPENAI_API_KEY` no `.env` (e, se quiser, `OPENAI_MODEL`, padrão `gpt-5.4-mini`; para a voz, `OPENAI_VOZ`, padrão `marin`, e `OPENAI_MODELO_VOZ`, padrão `gpt-4o-mini-tts`; para ouvir a pessoa, `OPENAI_MODELO_TRANSCRICAO`, padrão `gpt-4o-mini-transcribe`). Sem a chave, as rotas de IA respondem 503 e o front esconde os botões. Usa a API Chat Completions do SDK `openai`.
 
 - **Assistente** (`services/assistente.service.js`): conversa com *function calling*. Ferramentas de leitura (projetos, clientes, etapas, agenda, equipe e, para quem vê o financeiro, resumo e lançamentos) sempre filtradas pelo escritório. Ferramentas de ação (compromisso, cliente, projeto, etapa, lançamento, pagamento) **não executam**: devolvem um cartão que o front mostra e, ao confirmar, chama a rota normal da API, com as permissões de quem está logado.
-- **Proposta e relatório** (`services/documentosIa.service.js`): respostas em JSON com *structured outputs* (schema estrito). A proposta usa os projetos do escritório (valores, tipos e prazos) para sugerir valor e prazos; o relatório usa etapas, revisões, compromissos e arquivos recentes, sem valores.
+- **Novo projeto com IA** (`services/briefingIa.service.js`): o briefing vira, num JSON com *structured outputs* (schema estrito), o pacote para revisar: cliente (contatos do texto; nome igual a um cadastrado é reconhecido), projeto, programa de necessidades, proposta (etapas e prazos; valor e faixa pelos projetos do escritório, justificativa só interna), parcelas e compromissos (ligados às etapas pelo nome), documentos a pedir e perguntas que faltaram. O servidor arruma o que vier (limites, percentuais somando 100, tipos de compromisso do escritório, sem circulação no programa). Quem não vê o financeiro recebe sem valores e sem parcelas, e o histórico vai sem valores para a IA. A criação é em `POST /projetos/completo`, numa transação.
+- **Relatório** (`services/documentosIa.service.js`): JSON com schema estrito; usa etapas, revisões, compromissos e arquivos recentes, sem valores.
+- **Briefing no projeto**: campo JSON `briefing` (texto, resumo, programa, área construída, documentos com "recebido", perguntas, proposta sem valor). Fica fora de todas as consultas pelo `omit` global em `lib/prisma.js`; só `GET /projetos/:id` pede.
 - **Custo**: limite de 60 pedidos por pessoa a cada 10 minutos (`limiteIa`). Erros da OpenAI viram mensagens amigáveis (detalhe no terminal).
 
 ## Endpoints
@@ -151,7 +153,9 @@ As rotas abaixo exigem token:
 | POST / PUT / DELETE | `/clientes[/:id]` | Cria, edita, exclui (bloqueia se tiver projetos) |
 | GET | `/projetos?status=&clienteId=&busca=` | Lista projetos com `progresso` e `etapasAtrasadas` |
 | GET | `/projetos/:id` | Projeto com cliente, etapas, compromissos e lançamentos |
-| POST | `/projetos` | Cria projeto **com as etapas padrão**, ou com as enviadas em `etapas: [{ nome, dataPrevista? }]` (ex.: vindas de uma proposta) |
+| POST | `/projetos` | Cria projeto **com as etapas padrão**, ou com as enviadas em `etapas: [{ nome, dataPrevista? }]` |
+| POST | `/projetos/completo` | Do "Novo projeto com IA", tudo ou nada: `{ cliente: { id } ou { nome, email?, telefone? }, projeto: { nome, tipo, enderecoObra?, valorContrato?, dataInicio?, previsaoEntrega? }, etapas: [{ nome, dataPrevista? }], briefing?, parcelas?: [{ descricao, valor, vencimento }], compromissos?: [{ titulo, tipoId?, inicio, fim?, descricao? }] }`. Parcelas viram receitas da mesma série (categoria Projeto); parcelas sem acesso ao financeiro dão 403 |
+| PATCH | `/projetos/:id/documentos-cliente` | `{ documentos: [{ nome, recebido }] }`: lista de documentos do cliente do briefing |
 | PUT / DELETE | `/projetos/:id` | Edita / exclui |
 | PATCH | `/projetos/:id/status` | Muda o status `{ status: "ATIVO" \| "PAUSADO" \| "CONCLUIDO" }` (botão Concluir projeto) |
 | POST | `/projetos/:id/etapas` | Adiciona etapa ao final |
@@ -177,7 +181,7 @@ As rotas abaixo exigem token:
 | POST | `/ia/assistente` | `{ mensagens: [{ role: "user" \| "assistant", content }], fuso }` -> `{ resposta, acoes }`. Ações são só propostas: `{ titulo, linhas, requisicao: { metodo, rota, corpo, datasLocais? } }`, executadas pelo front na rota normal depois que a pessoa confirma |
 | POST | `/ia/voz` | `{ texto }` (até 1.200 caracteres) -> áudio mp3 da voz do assistente. Limite próprio: 200 pedidos por pessoa a cada 10 minutos |
 | POST | `/ia/transcrever` | multipart, campo `audio` (até 10 MB, guardado só na memória) -> `{ texto }`. Fala da pessoa para o assistente; os nomes de clientes e projetos ativos vão como dica para acertar a grafia |
-| POST | `/ia/proposta` | `{ descricao, tipo, clienteId? }` -> `{ proposta, baseadoEm }` (só quem vê o financeiro) |
+| POST | `/ia/briefing` | `{ briefing, tipo?, clienteId? }` -> `{ pacote, clienteExistente, baseadoEm }` (nada é criado; sem financeiro: sem valores e parcelas) |
 | POST | `/ia/relatorio/:projetoId` | `{ observacoes?, fuso? }` -> `{ assunto, mensagem }`: e-mail de andamento para o cliente, sem valores |
 
 ## Alterando o banco
