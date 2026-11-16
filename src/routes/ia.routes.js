@@ -63,6 +63,7 @@ router.use(limiteIa);
 
 // POST /api/ia/assistente  { mensagens: [{ role: 'user'|'assistant', content }], fuso }
 // -> { resposta, acoes: [{ id, titulo, linhas: [[rótulo, valor]], requisicao: { metodo, rota, corpo, datasLocais? } }] }
+//    (ação com tipo "revisao": traz "revisao" = pacote do Novo projeto com IA, para abrir a tela de revisão)
 router.post('/assistente', async (req, res) => {
   res.json(await responder({ req, mensagens: req.body.mensagens, fuso: req.body.fuso }));
 });

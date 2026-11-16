@@ -1,6 +1,7 @@
 const prisma = require('../lib/prisma');
 const { conversar } = require('../lib/ia');
 const { calcularResumoMes } = require('./financeiro.service');
+const { analisarBriefing } = require('./briefingIa.service');
 const { podeVerFinanceiro } = require('../middlewares/permissoes');
 const { HttpError, monthRange } = require('../utils/http');
 
@@ -180,6 +181,22 @@ function definicoes(verFinanceiro) {
       endereco_obra: texto('Endereço da obra'),
       ...(verFinanceiro && { valor_contrato: { type: ['number', 'null'], description: 'Valor do contrato em reais' } }),
     }),
+    ferramenta(
+      'montar_projeto_com_ia',
+      'Monta um projeto novo completo a partir do briefing (o que o cliente quer): programa de necessidades, proposta com etapas e prazos, ' +
+        'parcelas, compromissos e documentos a pedir. Nada é criado: a pessoa abre a revisão por um cartão, ajusta e aprova lá. ' +
+        'Use quando pedirem um projeto "com IA" ou descreverem um projeto novo com detalhes (ambientes, área, estilo, prazo, orçamento...).',
+      {
+        briefing: {
+          type: 'string',
+          description:
+            'Tudo o que a pessoa contou sobre o projeto nesta conversa, com as palavras dela, juntando as mensagens: cliente, local, ' +
+            'o que o cliente quer, ambientes, áreas, estilo, prazo, orçamento. Não resuma nem invente.',
+        },
+        cliente_id: inteiro('Cliente já cadastrado, se você já tiver o ID; senão null (o sistema reconhece o nome no briefing)'),
+        tipo: opcoes(TIPOS_PROJETO, 'Só se a pessoa disser o tipo; senão null'),
+      }
+    ),
     ferramenta('atualizar_etapa', 'PROPÕE alterar uma etapa (a pessoa confirma antes). Campos null ficam como estão.', {
       etapa_id: { type: 'integer' },
       status: opcoes(['NAO_INICIADA', 'EM_ANDAMENTO', 'CONCLUIDA'], 'Novo status'),
@@ -632,6 +649,52 @@ const executores = {
     });
   },
 
+  // Roda a mesma análise do "Novo projeto com IA" e devolve um cartão que abre a revisão já preenchida
+  async montar_projeto_com_ia(a, ctx) {
+    const briefing = String(a.briefing || '').trim();
+    if (briefing.length < 30) {
+      throw new ErroFerramenta('Briefing curto demais: pergunte à pessoa mais detalhes do projeto (cliente, o que ele quer, ambientes, área).');
+    }
+    const resultado = await analisarBriefing({
+      req: ctx.req,
+      body: { briefing, clienteId: a.cliente_id || null, tipo: a.tipo || null },
+    });
+    const { pacote, clienteExistente } = resultado;
+    const { proposta } = pacote;
+    const prazo = proposta.etapas.reduce((t, e) => t + e.prazoDias, 0);
+    const valor = ctx.verFinanceiro ? proposta.valor.sugerido : null;
+    const cliente = clienteExistente?.nome || (pacote.cliente.nome ? `${pacote.cliente.nome} (novo)` : 'a definir na revisão');
+
+    ctx.acoes.push({
+      id: `acao-${ctx.acoes.length + 1}-${Date.now()}`,
+      tipo: 'revisao', // não chama a API: abre a tela de revisão do "Novo projeto com IA"
+      titulo: 'Projeto montado com IA',
+      linhas: [
+        ['Projeto', pacote.projeto.nome],
+        ['Cliente', cliente],
+        ['Etapas', `${proposta.etapas.length} etapas, cerca de ${prazo} dias`],
+        ['Ambientes', pacote.programa.length ? `${pacote.programa.length} no programa` : null],
+        ['Valor sugerido', valor ? moeda(valor) : null],
+        ['Parcelas', ctx.verFinanceiro && pacote.parcelas.length ? String(pacote.parcelas.length) : null],
+        ['Agenda', pacote.compromissos.length ? `${pacote.compromissos.length} compromissos` : null],
+      ].filter(([, v]) => v),
+      revisao: { ...resultado, briefing },
+    });
+    return {
+      situacao: 'pacote_pronto_para_revisao',
+      projeto: pacote.projeto.nome,
+      cliente,
+      etapas: proposta.etapas.map((e) => `${e.nome} (${e.prazoDias} dias)`),
+      ...(valor && { valorSugerido: valor, parcelas: pacote.parcelas.length }),
+      compromissos: pacote.compromissos.length,
+      perguntasEmAberto: pacote.perguntas,
+      aviso:
+        'Nada foi criado ainda. A pessoa clica em "Revisar e aprovar" no cartão, confere tudo na tela de revisão e aprova lá. ' +
+        'Responda em duas ou três frases: o que foi montado e que é só revisar e aprovar. Se houver perguntas em aberto, cite no máximo duas. ' +
+        'O projeto ainda não existe: escreva o nome dele sem link.',
+    };
+  },
+
   async atualizar_etapa(a, ctx) {
     exigirFormato(a.data_prevista, RE_DATA, 'data_prevista', 'AAAA-MM-DD');
     const etapa = await prisma.etapa.findFirst({
@@ -743,6 +806,7 @@ function instrucoes(ctx, escritorio) {
     '- Ao citar um projeto ou cliente, use link markdown com o ID: [Casa Serra](/projetos/12), [Marina](/clientes/3).',
     '- Datas como dd/mm (com o ano se não for o atual), horários como 14h ou 14h30, valores como R$ 1.234,56.',
     '- Para criar ou alterar algo, use a ferramenta de ação: ela só PROPÕE, e a pessoa confirma num cartão. Depois diga em uma frase que é só confirmar. Nunca diga que já foi feito.',
+    '- Projeto novo com detalhes do que o cliente quer (ou pedido "com IA"): use montar_projeto_com_ia, não criar_projeto. Não precisa buscar o cliente antes. Se a pessoa só disser "cria um projeto com IA" sem contar nada, pergunte sobre o projeto primeiro.',
     '- Se faltar algo essencial para uma ação (ex.: o horário de uma reunião), pergunte antes. Para achar o ID de um cliente ou projeto pelo nome, busque primeiro.',
     '- Nas ações, preencha só o que a pessoa disse ou o que veio do sistema. Campos opcionais não informados (local, horário de fim, observações...) ficam null: não invente.',
     '- "Quanto falta receber" de um cliente ou projeto = receitas lançadas ainda não pagas (aReceberLancado). Se o contrato for maior que o total lançado, comente a diferença.',
@@ -776,6 +840,7 @@ async function responder({ req, mensagens, fuso }) {
   const agora = agoraNoFuso(zona);
   const ctx = {
     escritorioId: req.escritorioId,
+    req, // para montar_projeto_com_ia usar a mesma análise da rota (permissões do financeiro)
     usuario,
     verFinanceiro: podeVerFinanceiro(req.usuario),
     fuso: zona,
