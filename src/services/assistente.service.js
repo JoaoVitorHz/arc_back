@@ -1,5 +1,5 @@
 const prisma = require('../lib/prisma');
-const { conversar } = require('../lib/ia');
+const { conversarEmFluxo } = require('../lib/ia');
 const { calcularResumoMes } = require('./financeiro.service');
 const { analisarBriefing } = require('./briefingIa.service');
 const { podeVerFinanceiro } = require('../middlewares/permissoes');
@@ -792,32 +792,106 @@ async function executar(chamada, ctx) {
 
 // ---------- conversa ----------
 
-// Separa a resposta escrita (tela) do texto para falar (voz), quando a pessoa está ouvindo
-const MARCA_FALA = '§FALA§';
+// Quando a pessoa está ouvindo, a resposta vem em duas partes: primeiro o texto para a voz (assim a
+// voz começa enquanto o resto ainda está sendo escrito), depois a marca e o texto da tela.
+const MARCA_TELA = '§TELA§';
 
 const INSTRUCOES_FALA = [
   '',
-  'A pessoa está OUVINDO as respostas em voz alta. Depois da resposta escrita, escreva numa linha sozinha ' + MARCA_FALA + ' e, depois dela, o texto que a voz vai falar:',
+  'A pessoa está OUVINDO as respostas em voz alta. Comece pelo texto que a voz vai falar; depois escreva numa linha sozinha ' +
+    MARCA_TELA +
+    ' e, depois dela, a resposta escrita da tela. A da tela é independente da falada: segue as regras de sempre ' +
+    '(listas quando ajudarem, links, datas dd/mm, horários 14h) e traz os detalhes. Regras do texto falado:',
   '- Fale como uma colega de trabalho conversando: informal, leve e simpática, do jeito que se fala no dia a dia no Brasil. Não leia a tela: conte o essencial com as suas palavras.',
   '- Use a fala do dia a dia: "essa semana", "pra", "tá", "tem uma visita", "beleza", "olha", "fechou". Nada de linguagem formal ("nesta semana", "possui", "encontra-se", "informo que", "gostaria de").',
   '- Varie o começo das respostas; não comece sempre com a mesma palavra. De vez em quando, chame a pessoa pelo primeiro nome, sem exagerar.',
   '- Curto: até três ou quatro frases. Lista longa de dados do sistema (compromissos, etapas, lançamentos) vira resumo ("Você tem três compromissos essa semana; o primeiro é...") e, se for o caso, diga que os detalhes estão na tela.',
   '- Conteúdo que a pessoa pediu (dicas, explicação, passo a passo) é falado de verdade, de forma corrida ("Primeiro..., depois..."), sem cortar. Nunca diga que vai falar depois.',
-  '- Sem markdown, listas, links, IDs, emojis, abreviações, siglas soletradas ou símbolos (nada de "qui", "19/11", "10h", "R$", "—").',
-  '- Datas por extenso e relativas quando ajudar: "hoje", "amanhã", "nesta quinta-feira, dia 19", "dia 3 de dezembro".',
+  '- Texto corrido, como fala: sem markdown, listas (nem numeradas), quebras de linha, links, IDs, emojis, abreviações, siglas soletradas ou símbolos (nada de "qui", "19/11", "10h", "R$", "—").',
+  '- Datas por extenso e relativas quando ajudar: "hoje", "amanhã", "nessa quinta, dia 19", "dia 3 de dezembro".',
   '- Horários falados: "às 10 da manhã", "das 10 às 11 e meia", "às 2 da tarde", "ao meio-dia".',
   '- Valores falados: "52 mil reais", "mil e duzentos reais e cinquenta centavos".',
   '- Se houver um cartão para confirmar, termine dizendo, do seu jeito, que é só confirmar no cartão ("Deixei pronto aí, é só confirmar"). Não diga que já marcou, fechou ou criou: ainda falta a pessoa confirmar.',
-  '- Não escreva ' + MARCA_FALA + ' em nenhum outro lugar.',
+  '- Não escreva ' + MARCA_TELA + ' em nenhum outro lugar.',
+  '',
+  'Exemplo do formato (a parte da tela NÃO repete a falada: é a versão escrita, com lista e links):',
+  'Olha, essa semana você tem dois compromissos: na quinta tem a visita técnica com o Bruno, de manhã, e na sexta uma reunião de briefing à tarde.',
+  MARCA_TELA,
+  'Essa semana:',
+  '- **Qui., 19/11, 10h às 11h30**: Visita técnica inicial, com [Bruno Teixeira](/clientes/3)',
+  '- **Sex., 20/11, 14h às 15h**: Reunião de briefing, projeto [Cafeteria Grão & Cia](/projetos/8)',
 ].join('\n');
 
-// "texto da tela §FALA§ texto falado" -> { resposta, fala }
-function separarFala(conteudo) {
-  const i = conteudo.indexOf(MARCA_FALA);
+// "texto falado §TELA§ texto da tela" -> { resposta, fala }. Sem a marca, tudo é a resposta da tela.
+function separarFala(conteudo, voz) {
+  const i = voz ? conteudo.indexOf(MARCA_TELA) : -1;
   if (i < 0) return { resposta: conteudo.trim(), fala: null };
-  const resposta = conteudo.slice(0, i).trim();
-  const fala = conteudo.slice(i + MARCA_FALA.length).trim();
+  const fala = conteudo.slice(0, i).trim();
+  const resposta = conteudo.slice(i + MARCA_TELA.length).trim();
   return { resposta: resposta || fala, fala: fala || null };
+}
+
+// Divide o texto que chega aos pedaços em "fala" (antes da marca) e "texto" (depois), avisando cada
+// pedaço assim que chega. Segura o fim do pedaço quando ele pode ser o começo da marca.
+function divisorDeFluxo(voz, emitir) {
+  let parte = voz ? 'fala' : 'texto';
+  let pendente = '';
+  const enviar = (texto) => texto && emitir(parte, { texto });
+  return {
+    adicionar(pedaco) {
+      pendente += pedaco;
+      if (parte === 'fala') {
+        const i = pendente.indexOf(MARCA_TELA);
+        if (i >= 0) {
+          enviar(pendente.slice(0, i));
+          pendente = pendente.slice(i + MARCA_TELA.length).replace(/^\s+/, '');
+          parte = 'texto';
+        } else {
+          // guarda o que pode ser o começo da marca ("§", "§TE"...)
+          let guardar = 0;
+          for (let n = Math.min(MARCA_TELA.length - 1, pendente.length); n > 0; n--) {
+            if (MARCA_TELA.startsWith(pendente.slice(-n))) {
+              guardar = n;
+              break;
+            }
+          }
+          enviar(pendente.slice(0, pendente.length - guardar));
+          pendente = pendente.slice(pendente.length - guardar);
+          return;
+        }
+      }
+      enviar(pendente);
+      pendente = '';
+    },
+    terminar() {
+      enviar(pendente);
+      pendente = '';
+    },
+  };
+}
+
+// Uma chamada ao modelo, recebida aos pedaços: o texto vai saindo por "aoEscrever" e as chamadas de
+// ferramenta são montadas a partir dos pedaços (só dá para executá-las no fim)
+async function rodadaEmFluxo(params, aoEscrever) {
+  const fluxo = await conversarEmFluxo(params);
+  let conteudo = '';
+  const chamadas = [];
+  for await (const parte of fluxo) {
+    const delta = parte.choices?.[0]?.delta;
+    if (!delta) continue;
+    for (const tc of delta.tool_calls || []) {
+      const c = (chamadas[tc.index] ??= { id: '', type: 'function', function: { name: '', arguments: '' } });
+      if (tc.id) c.id = tc.id;
+      if (tc.function?.name) c.function.name += tc.function.name;
+      if (tc.function?.arguments) c.function.arguments += tc.function.arguments;
+    }
+    const texto = delta.content || delta.refusal;
+    if (texto) {
+      conteudo += texto;
+      aoEscrever(texto);
+    }
+  }
+  return { conteudo, chamadas: chamadas.filter(Boolean) };
 }
 
 function instrucoes(ctx, escritorio) {
@@ -831,7 +905,7 @@ function instrucoes(ctx, escritorio) {
     'Como responder:',
     '- Português do Brasil, curto e direto: poucas frases ou uma lista. Sem rodeios nem ofertas genéricas no final.',
     '- Busque os dados com as ferramentas. Nunca invente projetos, clientes, datas ou valores; se não encontrar, diga.',
-    '- Ao citar um projeto ou cliente, use link markdown com o ID: [Casa Serra](/projetos/12), [Marina](/clientes/3).',
+    '- Ao citar um projeto ou cliente, use link markdown com o ID dele: [Casa Serra](/projetos/12), [Marina](/clientes/3). O link de projeto usa o ID do projeto e o de cliente, o ID do cliente; compromissos e etapas não têm link próprio.',
     '- Datas como dd/mm (com o ano se não for o atual), horários como 14h ou 14h30, valores como R$ 1.234,56.',
     '- Para criar ou alterar algo, use a ferramenta de ação: ela só PROPÕE, e a pessoa confirma num cartão. Depois diga em uma frase que é só confirmar. Nunca diga que já foi feito.',
     '- Projeto novo com detalhes do que o cliente quer (ou pedido "com IA"): use montar_projeto_com_ia, não criar_projeto. Não precisa buscar o cliente antes. Se a pessoa só disser "cria um projeto com IA" sem contar nada, pergunte sobre o projeto primeiro.',
@@ -858,7 +932,9 @@ function validarHistorico(mensagens) {
   return historico;
 }
 
-async function responder({ req, mensagens, fuso, voz = false }) {
+// emitir(evento, dados): avisa cada pedaço assim que chega ("fala" e "texto"; "descartar" quando um texto
+// escrito antes de usar ferramentas deve sair da tela). Sem emitir, só devolve a resposta inteira no fim.
+async function responder({ req, mensagens, fuso, voz = false, emitir = () => {} }) {
   const historico = validarHistorico(mensagens);
   const usuario = await prisma.usuario.findUniqueOrThrow({
     where: { id: req.usuario.id },
@@ -884,16 +960,20 @@ async function responder({ req, mensagens, fuso, voz = false }) {
   ];
 
   for (let rodada = 0; rodada < MAX_RODADAS; rodada++) {
-    const resposta = await conversar({ messages: conversa, tools: ferramentas });
-    const mensagem = resposta.choices[0].message;
-    const chamadas = (mensagem.tool_calls || []).filter((c) => c.type === 'function');
+    const divisor = divisorDeFluxo(voz, emitir);
+    const { conteudo, chamadas } = await rodadaEmFluxo({ messages: conversa, tools: ferramentas }, (t) =>
+      divisor.adicionar(t)
+    );
 
     if (chamadas.length === 0) {
-      const { resposta, fala } = separarFala(mensagem.content || mensagem.refusal || 'Não consegui responder agora.');
+      divisor.terminar();
+      const { resposta, fala } = separarFala(conteudo || 'Não consegui responder agora.', voz);
       return { resposta, ...(voz && { fala }), acoes: ctx.acoes };
     }
 
-    conversa.push({ role: 'assistant', content: mensagem.content ?? null, tool_calls: chamadas });
+    // texto escrito antes de usar as ferramentas ("deixa eu ver..."): sai da tela (a voz pode já ter falado)
+    if (conteudo) emitir('descartar', {});
+    conversa.push({ role: 'assistant', content: conteudo || null, tool_calls: chamadas });
     const resultados = await Promise.all(chamadas.map((c) => executar(c, ctx)));
     chamadas.forEach((c, i) => {
       conversa.push({ role: 'tool', tool_call_id: c.id, content: JSON.stringify(resultados[i]) });
@@ -906,4 +986,4 @@ async function responder({ req, mensagens, fuso, voz = false }) {
   };
 }
 
-module.exports = { responder, agoraNoFuso, fusoValido, FUSO_PADRAO };
+module.exports = { responder, validarHistorico, agoraNoFuso, fusoValido, FUSO_PADRAO };

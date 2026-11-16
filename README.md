@@ -180,7 +180,8 @@ As rotas abaixo exigem token:
 | PATCH | `/lancamentos/:id/pagamento` | Marca como pago/pendente `{ "pago": true }` |
 | GET | `/ia` | `{ ativa }`: se há chave de IA configurada |
 | POST | `/ia/assistente` | `{ mensagens: [{ role: "user" \| "assistant", content }], fuso, voz? }` -> `{ resposta, fala?, acoes }`. Com `voz: true` (a resposta vai ser falada), a IA escreve também `fala`: texto natural para a voz, sem markdown nem abreviações (datas e horários por extenso, listas de dados resumidas). Ações são só propostas: `{ titulo, linhas, requisicao: { metodo, rota, corpo, datasLocais? } }`, executadas pelo front na rota normal depois que a pessoa confirma |
-| POST | `/ia/voz` | `{ texto }` (até 1.200 caracteres) -> áudio mp3 da voz do assistente. Limite próprio: 200 pedidos por pessoa a cada 10 minutos |
+| POST | `/ia/assistente/fluxo` | Mesmo corpo, resposta em *text/event-stream* chegando aos pedaços: `fala` e `texto` (`{ texto }`), `descartar`, `fim` (`{ resposta, fala?, acoes }`) e `erro`. Com `voz: true` a parte falada vem primeiro (marca `§TELA§` separa), para a voz começar antes de a resposta terminar. É a rota usada pelo painel |
+| POST | `/ia/voz` | `{ texto }` (até 1.200 caracteres) -> áudio mp3 da voz do assistente, repassado em fluxo enquanto é gerado (o navegador já toca o começo). Limite próprio: 200 pedidos por pessoa a cada 10 minutos |
 | POST | `/ia/transcrever` | multipart, campo `audio` (até 10 MB, guardado só na memória) -> `{ texto }`. Fala da pessoa para o assistente; os nomes de clientes e projetos ativos vão como dica para acertar a grafia |
 | POST | `/ia/briefing` | `{ briefing, tipo?, clienteId? }` -> `{ pacote, clienteExistente, baseadoEm }` (nada é criado; sem financeiro: sem valores e parcelas) |
 | POST | `/ia/relatorio/:projetoId` | `{ observacoes?, fuso? }` -> `{ assunto, mensagem }`: e-mail de andamento para o cliente, sem valores |

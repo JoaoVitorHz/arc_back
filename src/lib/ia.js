@@ -28,19 +28,34 @@ function obterCliente() {
 }
 
 // Uma chamada ao modelo. Erros da OpenAI viram uma mensagem amigável (o detalhe fica no log)
+// Erros da OpenAI viram mensagens para a pessoa (sem detalhes técnicos)
+function erroDaIa(error) {
+  if (!(error instanceof OpenAI.APIError)) return error;
+  console.error(`[ia] OpenAI ${error.status}: ${error.message}`);
+  if (error.status === 429) {
+    return new HttpError(503, 'A IA está ocupada ou sem créditos no momento. Tente de novo em instantes.', 'IA_LIMITE');
+  }
+  return new HttpError(502, 'A IA não respondeu agora. Tente de novo em instantes.', 'IA_ERRO');
+}
+
+// Mesma chamada, mas a resposta chega aos pedaços (para mostrar e falar enquanto é escrita).
+// Erros no meio do fluxo também viram mensagens para a pessoa.
+async function* conversarEmFluxo(params) {
+  const openai = obterCliente();
+  try {
+    const fluxo = await openai.chat.completions.create({ model: modelo(), ...params, stream: true });
+    for await (const parte of fluxo) yield parte;
+  } catch (error) {
+    throw erroDaIa(error);
+  }
+}
+
 async function conversar(params) {
   const openai = obterCliente();
   try {
     return await openai.chat.completions.create({ model: modelo(), ...params });
   } catch (error) {
-    if (error instanceof OpenAI.APIError) {
-      console.error(`[ia] OpenAI ${error.status}: ${error.message}`);
-      if (error.status === 429) {
-        throw new HttpError(503, 'A IA está ocupada ou sem créditos no momento. Tente de novo em instantes.', 'IA_LIMITE');
-      }
-      throw new HttpError(502, 'A IA não respondeu agora. Tente de novo em instantes.', 'IA_ERRO');
-    }
-    throw error;
+    throw erroDaIa(error);
   }
 }
 
@@ -66,6 +81,8 @@ const INSTRUCOES_VOZ =
   'no dia a dia (sorriso na voz, entonação de conversa, nada de locutora ou atendimento formal). Ritmo ágil e sem pausas longas. ' +
   'Leia datas como "16/11" por extenso ("dia 16 de novembro"), "14h" como "14 horas" e valores em reais por extenso.';
 
+// Devolve o áudio (mp3) como fluxo: os primeiros pedaços chegam antes de a frase inteira ficar pronta,
+// e a rota repassa direto para o navegador ir tocando
 async function falar(texto) {
   const openai = obterCliente();
   try {
@@ -76,7 +93,7 @@ async function falar(texto) {
       instructions: INSTRUCOES_VOZ,
       response_format: 'mp3',
     });
-    return Buffer.from(await resposta.arrayBuffer());
+    return resposta.body;
   } catch (error) {
     if (error instanceof OpenAI.APIError) {
       console.error(`[ia] voz OpenAI ${error.status}: ${error.message}`);
@@ -126,4 +143,4 @@ const limiteVoz = rateLimit({
   message: { erro: 'Muitos pedidos de voz em pouco tempo. Aguarde alguns minutos.' },
 });
 
-module.exports = { iaConfigurada, modelo, conversar, gerarJson, falar, transcrever, limiteIa, limiteVoz };
+module.exports = { iaConfigurada, modelo, conversar, conversarEmFluxo, gerarJson, falar, transcrever, limiteIa, limiteVoz };

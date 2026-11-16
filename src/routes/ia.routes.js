@@ -1,8 +1,9 @@
+const { Readable } = require('stream');
 const { Router } = require('express');
 const multer = require('multer');
 const prisma = require('../lib/prisma');
 const { iaConfigurada, falar, transcrever, limiteIa, limiteVoz } = require('../lib/ia');
-const { responder } = require('../services/assistente.service');
+const { responder, validarHistorico } = require('../services/assistente.service');
 const { gerarRelatorio } = require('../services/documentosIa.service');
 const { analisarBriefing } = require('../services/briefingIa.service');
 const { HttpError, parseId } = require('../utils/http');
@@ -14,13 +15,18 @@ router.get('/', (req, res) => {
   res.json({ ativa: iaConfigurada() });
 });
 
-// POST /api/ia/voz  { texto }  -> audio/mpeg (a voz de um trecho da resposta do assistente)
+// POST /api/ia/voz  { texto }  -> audio/mpeg em fluxo (a voz de um trecho da resposta do assistente)
 router.post('/voz', limiteVoz, async (req, res) => {
   const texto = String(req.body.texto || '').trim();
   if (!texto) throw new HttpError(400, 'Envie o texto');
   if (texto.length > 1200) throw new HttpError(400, 'Trecho longo demais para a voz (máximo 1.200 caracteres)');
   const audio = await falar(texto);
-  res.set('Cache-Control', 'no-store').type('audio/mpeg').send(audio);
+  res.set('Cache-Control', 'no-store').type('audio/mpeg');
+  // repassa o áudio enquanto ele é gerado; se a pessoa parar a voz (fecha a conexão), para de gerar
+  const fluxo = Readable.fromWeb(audio);
+  res.on('close', () => fluxo.destroy());
+  fluxo.on('error', () => res.destroy());
+  fluxo.pipe(res);
 });
 
 // Áudio gravado no navegador (webm/ogg/mp4), guardado só na memória e descartado depois
@@ -67,6 +73,32 @@ router.use(limiteIa);
 //    (ação com tipo "revisao": traz "revisao" = pacote do Novo projeto com IA, para abrir a tela de revisão)
 router.post('/assistente', async (req, res) => {
   res.json(await responder({ req, mensagens: req.body.mensagens, fuso: req.body.fuso, voz: req.body.voz === true }));
+});
+
+// POST /api/ia/assistente/fluxo  (mesmo corpo) -> text/event-stream, a resposta chegando aos pedaços:
+//   event: fala      { texto }  pedaço do texto para a voz (só com voz: true; vem antes do texto da tela)
+//   event: texto     { texto }  pedaço do texto da tela
+//   event: descartar {}         o texto da tela até aqui era provisório (a IA foi consultar o sistema)
+//   event: fim       { resposta, fala?, acoes }  resposta completa (vale esta, não a soma dos pedaços)
+//   event: erro      { erro }
+router.post('/assistente/fluxo', async (req, res) => {
+  validarHistorico(req.body.mensagens); // erro de formato ainda sai como 400 normal
+  res.writeHead(200, {
+    'Content-Type': 'text/event-stream; charset=utf-8',
+    'Cache-Control': 'no-cache, no-transform',
+    'X-Accel-Buffering': 'no', // proxies (nginx) não seguram os pedaços
+  });
+  const emitir = (evento, dados) => {
+    if (!res.writableEnded) res.write(`event: ${evento}\ndata: ${JSON.stringify(dados)}\n\n`);
+  };
+  try {
+    const final = await responder({ req, mensagens: req.body.mensagens, fuso: req.body.fuso, voz: req.body.voz === true, emitir });
+    emitir('fim', final);
+  } catch (error) {
+    if (!(error instanceof HttpError)) console.error('[ia] assistente em fluxo:', error);
+    emitir('erro', { erro: error instanceof HttpError ? error.message : 'A IA não respondeu agora. Tente de novo em instantes.' });
+  }
+  res.end();
 });
 
 // POST /api/ia/briefing  { briefing, tipo?, clienteId? }
