@@ -61,11 +61,12 @@ router.post('/transcrever', limiteVoz, uploadAudio.single('audio'), async (req, 
 
 router.use(limiteIa);
 
-// POST /api/ia/assistente  { mensagens: [{ role: 'user'|'assistant', content }], fuso }
+// POST /api/ia/assistente  { mensagens: [{ role: 'user'|'assistant', content }], fuso, voz? }
+//    voz: true quando a resposta vai ser falada -> vem também "fala" (texto natural para a voz, sem markdown)
 // -> { resposta, acoes: [{ id, titulo, linhas: [[rótulo, valor]], requisicao: { metodo, rota, corpo, datasLocais? } }] }
 //    (ação com tipo "revisao": traz "revisao" = pacote do Novo projeto com IA, para abrir a tela de revisão)
 router.post('/assistente', async (req, res) => {
-  res.json(await responder({ req, mensagens: req.body.mensagens, fuso: req.body.fuso }));
+  res.json(await responder({ req, mensagens: req.body.mensagens, fuso: req.body.fuso, voz: req.body.voz === true }));
 });
 
 // POST /api/ia/briefing  { briefing, tipo?, clienteId? }

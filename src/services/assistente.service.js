@@ -792,6 +792,32 @@ async function executar(chamada, ctx) {
 
 // ---------- conversa ----------
 
+// Separa a resposta escrita (tela) do texto para falar (voz), quando a pessoa está ouvindo
+const MARCA_FALA = '§FALA§';
+
+const INSTRUCOES_FALA = [
+  '',
+  'A pessoa está OUVINDO as respostas em voz alta. Depois da resposta escrita, escreva numa linha sozinha ' + MARCA_FALA + ' e, depois dela, o texto que a voz vai falar:',
+  '- Fale como uma pessoa conversando, natural e simpática. Não leia a tela: conte o essencial com as suas palavras.',
+  '- Curto: até três ou quatro frases. Lista longa de dados do sistema (compromissos, etapas, lançamentos) vira resumo ("Você tem três compromissos; o primeiro é...") e, se for o caso, diga que os detalhes estão na tela.',
+  '- Conteúdo que a pessoa pediu (dicas, explicação, passo a passo) é falado de verdade, de forma corrida ("Primeiro..., depois..."), sem cortar. Nunca diga que vai falar depois.',
+  '- Sem markdown, listas, links, IDs, emojis, abreviações, siglas soletradas ou símbolos (nada de "qui", "19/11", "10h", "R$", "—").',
+  '- Datas por extenso e relativas quando ajudar: "hoje", "amanhã", "nesta quinta-feira, dia 19", "dia 3 de dezembro".',
+  '- Horários falados: "às 10 da manhã", "das 10 às 11 e meia", "às 2 da tarde", "ao meio-dia".',
+  '- Valores falados: "52 mil reais", "mil e duzentos reais e cinquenta centavos".',
+  '- Se houver um cartão para confirmar, termine dizendo que é só confirmar no cartão.',
+  '- Não escreva ' + MARCA_FALA + ' em nenhum outro lugar.',
+].join('\n');
+
+// "texto da tela §FALA§ texto falado" -> { resposta, fala }
+function separarFala(conteudo) {
+  const i = conteudo.indexOf(MARCA_FALA);
+  if (i < 0) return { resposta: conteudo.trim(), fala: null };
+  const resposta = conteudo.slice(0, i).trim();
+  const fala = conteudo.slice(i + MARCA_FALA.length).trim();
+  return { resposta: resposta || fala, fala: fala || null };
+}
+
 function instrucoes(ctx, escritorio) {
   const [data, hora] = [ctx.hoje, ctx.agora];
   const semana = new Intl.DateTimeFormat('pt-BR', { weekday: 'long', timeZone: 'UTC' }).format(new Date(`${data}T12:00:00Z`));
@@ -830,7 +856,7 @@ function validarHistorico(mensagens) {
   return historico;
 }
 
-async function responder({ req, mensagens, fuso }) {
+async function responder({ req, mensagens, fuso, voz = false }) {
   const historico = validarHistorico(mensagens);
   const usuario = await prisma.usuario.findUniqueOrThrow({
     where: { id: req.usuario.id },
@@ -850,7 +876,10 @@ async function responder({ req, mensagens, fuso }) {
   };
 
   const ferramentas = definicoes(ctx.verFinanceiro);
-  const conversa = [{ role: 'developer', content: instrucoes(ctx, usuario.escritorio?.nome || '') }, ...historico];
+  const conversa = [
+    { role: 'developer', content: instrucoes(ctx, usuario.escritorio?.nome || '') + (voz ? INSTRUCOES_FALA : '') },
+    ...historico,
+  ];
 
   for (let rodada = 0; rodada < MAX_RODADAS; rodada++) {
     const resposta = await conversar({ messages: conversa, tools: ferramentas });
@@ -858,7 +887,8 @@ async function responder({ req, mensagens, fuso }) {
     const chamadas = (mensagem.tool_calls || []).filter((c) => c.type === 'function');
 
     if (chamadas.length === 0) {
-      return { resposta: mensagem.content || mensagem.refusal || 'Não consegui responder agora.', acoes: ctx.acoes };
+      const { resposta, fala } = separarFala(mensagem.content || mensagem.refusal || 'Não consegui responder agora.');
+      return { resposta, ...(voz && { fala }), acoes: ctx.acoes };
     }
 
     conversa.push({ role: 'assistant', content: mensagem.content ?? null, tool_calls: chamadas });
