@@ -172,6 +172,20 @@ const documentosEnviados = (lista) =>
         .filter((d) => d.nome)
     : [];
 
+// Programa de necessidades: [{ ambiente, quantidade, areaM2, observacao }]
+const programaEnviado = (lista) =>
+  Array.isArray(lista)
+    ? lista
+        .slice(0, 60)
+        .map((item) => ({
+          ambiente: texto(item?.ambiente, 120),
+          quantidade: inteiro(item?.quantidade, 1, 50) || 1,
+          areaM2: area(item?.areaM2),
+          observacao: texto(item?.observacao, 300),
+        }))
+        .filter((item) => item.ambiente)
+    : [];
+
 // O que fica guardado no projeto: só os campos conhecidos, com limites de tamanho
 function briefingEnviado(b) {
   if (!b || typeof b !== 'object') return null;
@@ -179,17 +193,7 @@ function briefingEnviado(b) {
   return {
     texto: texto(b.texto, 8000),
     resumo: texto(b.resumo, 1000),
-    programa: Array.isArray(b.programa)
-      ? b.programa
-          .slice(0, 60)
-          .map((item) => ({
-            ambiente: texto(item?.ambiente, 120),
-            quantidade: inteiro(item?.quantidade, 1, 50) || 1,
-            areaM2: area(item?.areaM2),
-            observacao: texto(item?.observacao, 300),
-          }))
-          .filter((item) => item.ambiente)
-      : [],
+    programa: programaEnviado(b.programa),
     areaConstruidaM2: area(b.areaConstruidaM2),
     documentos: documentosEnviados(b.documentos),
     perguntas: textos(b.perguntas, 10, 300),
@@ -336,6 +340,24 @@ router.patch('/:id/documentos-cliente', async (req, res) => {
   const briefing = { ...(atual.briefing || {}), documentos: documentosEnviados(req.body.documentos) };
   await prisma.projeto.update({ where: { id, escritorioId: req.escritorioId }, data: { briefing } });
   res.json(briefing.documentos);
+});
+
+// PATCH /api/projetos/:id/briefing  { resumo, programa: [{ ambiente, quantidade, areaM2, observacao }], areaConstruidaM2 }
+// Editar o resumo e o programa de necessidades (o resto do briefing fica como está)
+router.patch('/:id/briefing', async (req, res) => {
+  const id = parseId(req.params.id);
+  const atual = await prisma.projeto.findFirstOrThrow({
+    where: { id, escritorioId: req.escritorioId },
+    select: { briefing: true },
+  });
+  const editado = {
+    resumo: texto(req.body.resumo, 1000),
+    programa: programaEnviado(req.body.programa),
+    areaConstruidaM2: area(req.body.areaConstruidaM2),
+  };
+  const briefing = { ...(atual.briefing || {}), ...editado };
+  await prisma.projeto.update({ where: { id, escritorioId: req.escritorioId }, data: { briefing } });
+  res.json(editado);
 });
 
 // PUT /api/projetos/:id

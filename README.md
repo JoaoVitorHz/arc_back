@@ -156,6 +156,7 @@ As rotas abaixo exigem token:
 | POST | `/projetos` | Cria projeto **com as etapas padrão**, ou com as enviadas em `etapas: [{ nome, dataPrevista? }]` |
 | POST | `/projetos/completo` | Do "Novo projeto com IA", tudo ou nada: `{ cliente: { id } ou { nome, email?, telefone? }, projeto: { nome, tipo, enderecoObra?, valorContrato?, dataInicio?, previsaoEntrega? }, etapas: [{ nome, dataPrevista? }], briefing?, parcelas?: [{ descricao, valor, vencimento }], compromissos?: [{ titulo, tipoId?, inicio, fim?, descricao? }] }`. Parcelas viram receitas da mesma série (categoria Projeto); parcelas sem acesso ao financeiro dão 403 |
 | PATCH | `/projetos/:id/documentos-cliente` | `{ documentos: [{ nome, recebido }] }`: lista de documentos a pedir ao cliente (de qualquer projeto; a do Novo projeto com IA já vem preenchida) |
+| PATCH | `/projetos/:id/briefing` | `{ resumo, programa: [{ ambiente, quantidade, areaM2, observacao }], areaConstruidaM2 }`: edita o resumo e o programa de necessidades do briefing (o resto fica como está) |
 | PUT / DELETE | `/projetos/:id` | Edita / exclui |
 | PATCH | `/projetos/:id/status` | Muda o status `{ status: "ATIVO" \| "PAUSADO" \| "CONCLUIDO" }` (botão Concluir projeto) |
 | POST | `/projetos/:id/etapas` | Adiciona etapa ao final |
