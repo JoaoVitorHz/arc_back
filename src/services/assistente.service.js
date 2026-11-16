@@ -805,7 +805,7 @@ const INSTRUCOES_FALA = [
   '- Fale como uma colega de trabalho conversando: informal, leve e simpática, do jeito que se fala no dia a dia no Brasil. Não leia a tela: conte o essencial com as suas palavras.',
   '- Use a fala do dia a dia: "essa semana", "pra", "tá", "tem uma visita", "beleza", "olha", "fechou". Nada de linguagem formal ("nesta semana", "possui", "encontra-se", "informo que", "gostaria de").',
   '- Varie o começo das respostas; não comece sempre com a mesma palavra. De vez em quando, chame a pessoa pelo primeiro nome, sem exagerar.',
-  '- Curto: até três ou quatro frases. Lista longa de dados do sistema (compromissos, etapas, lançamentos) vira resumo ("Você tem três compromissos essa semana; o primeiro é...") e, se for o caso, diga que os detalhes estão na tela.',
+  '- Curto: até três ou quatro frases. Lista longa de dados do sistema (compromissos, etapas, lançamentos) vira resumo ("Você tem três compromissos essa semana; o primeiro é..."). Os detalhes sempre aparecem escritos na conversa: se ajudar, diga que estão aí ("os detalhes tão aí embaixo"), sem oferecer ("se quiser, eu te passo") nem prometer o que não está escrito.',
   '- Conteúdo que a pessoa pediu (dicas, explicação, passo a passo) é falado de verdade, de forma corrida ("Primeiro..., depois..."), sem cortar. Nunca diga que vai falar depois.',
   '- Texto corrido, como fala: sem markdown, listas (nem numeradas), quebras de linha, links, IDs, emojis, abreviações, siglas soletradas ou símbolos (nada de "qui", "19/11", "10h", "R$", "—").',
   '- Datas por extenso e relativas quando ajudar: "hoje", "amanhã", "nessa quinta, dia 19", "dia 3 de dezembro".',
@@ -872,6 +872,24 @@ function divisorDeFluxo(voz, emitir) {
 
 // Uma chamada ao modelo, recebida aos pedaços: o texto vai saindo por "aoEscrever" e as chamadas de
 // ferramenta são montadas a partir dos pedaços (só dá para executá-las no fim)
+// Quando a resposta veio só com a parte falada: escreve a versão da tela (com os dados já consultados
+// na conversa), mandando os pedaços como "texto"
+async function escreverTela(conversa, fala, emitir) {
+  const pedido = [
+    ...conversa,
+    { role: 'assistant', content: fala },
+    {
+      role: 'developer',
+      content:
+        'Agora escreva só a resposta escrita da tela para a última pergunta, com as regras de sempre: listas quando ajudarem, ' +
+        'links markdown com os IDs, datas dd/mm, horários 14h, e os detalhes (é aqui que eles aparecem). Não repita a resposta ' +
+        'falada, não fale de voz nem de tela e não escreva ' + MARCA_TELA + '.',
+    },
+  ];
+  const { conteudo } = await rodadaEmFluxo({ messages: pedido }, (texto) => emitir('texto', { texto }));
+  return conteudo.trim() || fala;
+}
+
 async function rodadaEmFluxo(params, aoEscrever) {
   const fluxo = await conversarEmFluxo(params);
   let conteudo = '';
@@ -967,6 +985,12 @@ async function responder({ req, mensagens, fuso, voz = false, emitir = () => {} 
 
     if (chamadas.length === 0) {
       divisor.terminar();
+      if (voz && conteudo.trim() && !conteudo.includes(MARCA_TELA)) {
+        // a IA escreveu só a parte falada (esqueceu a marca): a voz já está falando; pede a versão da tela
+        const fala = conteudo.trim();
+        const resposta = await escreverTela(conversa, fala, emitir);
+        return { resposta, fala, acoes: ctx.acoes };
+      }
       const { resposta, fala } = separarFala(conteudo || 'Não consegui responder agora.', voz);
       return { resposta, ...(voz && { fala }), acoes: ctx.acoes };
     }
