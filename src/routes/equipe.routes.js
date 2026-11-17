@@ -51,7 +51,7 @@ function emailConvite({ nomeConvidado, nomeEscritorio, quemConvidou, link }) {
   const texto = [
     `Olá, ${nomeConvidado}!`,
     '',
-    `${quemConvidou} convidou você para fazer parte do escritório "${nomeEscritorio}" no ArcGestão.`,
+    `${quemConvidou} convidou você para fazer parte do escritório "${nomeEscritorio}" no ArcDesk.`,
     `Para aceitar, abra o link abaixo (ele vale por ${VALIDADE_CONVITE_DIAS} dias):`,
     '',
     link,
@@ -61,7 +61,7 @@ function emailConvite({ nomeConvidado, nomeEscritorio, quemConvidou, link }) {
     <div style="font-family: Arial, sans-serif; max-width: 480px; color: #18181b">
       <p>Olá, ${escaparHtml(nomeConvidado)}!</p>
       <p>${escaparHtml(quemConvidou)} convidou você para fazer parte do escritório
-        <strong>${escaparHtml(nomeEscritorio)}</strong> no ArcGestão.</p>
+        <strong>${escaparHtml(nomeEscritorio)}</strong> no ArcDesk.</p>
       <p>
         <a href="${link}" style="display: inline-block; background: #25665e; color: #fff; padding: 10px 18px; border-radius: 8px; text-decoration: none">
           Aceitar convite
@@ -86,7 +86,7 @@ async function enviarConvite(req, convite, token) {
     quemConvidou: autor.nome,
     link,
   });
-  enviarEmail({ para: convite.email, assunto: `Convite para o escritório ${escritorio.nome} · ArcGestão`, texto, html }).catch(
+  enviarEmail({ para: convite.email, assunto: `Convite para o escritório ${escritorio.nome} · ArcDesk`, texto, html }).catch(
     (erro) => console.error('Falha ao enviar o convite por e-mail:', erro.message)
   );
   return link;
@@ -199,7 +199,7 @@ router.post('/membros', async (req, res) => {
 
   const existente = await prisma.usuario.findUnique({ where: { email: dados.email }, select: { id: true } });
   if (existente) {
-    throw new HttpError(409, 'Este e-mail já tem conta no ArcGestão. Envie um convite para essa pessoa.');
+    throw new HttpError(409, 'Este e-mail já tem conta no ArcDesk. Envie um convite para essa pessoa.');
   }
 
   const [membro] = await prisma.$transaction([

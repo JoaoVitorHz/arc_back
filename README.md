@@ -1,6 +1,6 @@
 # ArcBack
 
-API do **ArcGestão**, sistema de gestão para escritórios de arquitetura.
+API do **ArcDesk**, sistema de gestão para escritórios de arquitetura.
 
 **Stack:** Node.js · Express 5 · Prisma 6 · MySQL/MariaDB (XAMPP)
 

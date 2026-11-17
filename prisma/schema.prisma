@@ -1,4 +1,4 @@
-// Modelo de dados do ArcGestão (MVP)
+// Modelo de dados do ArcDesk (MVP)
 // Docs: https://pris.ly/d/prisma-schema
 
 generator client {

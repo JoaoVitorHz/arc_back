@@ -92,7 +92,7 @@ function emailRedefinicao(nome, link) {
   const texto = [
     `Olá, ${nome}!`,
     '',
-    'Recebemos um pedido para redefinir a senha da sua conta no ArcGestão.',
+    'Recebemos um pedido para redefinir a senha da sua conta no ArcDesk.',
     `Para criar uma nova senha, abra o link abaixo (ele vale por ${VALIDADE_LINK_MINUTOS} minutos e só pode ser usado uma vez):`,
     '',
     link,
@@ -103,7 +103,7 @@ function emailRedefinicao(nome, link) {
   const html = `
     <div style="font-family: Arial, sans-serif; max-width: 480px; color: #18181b">
       <p>Olá, ${escaparHtml(nome)}!</p>
-      <p>Recebemos um pedido para redefinir a senha da sua conta no <strong>ArcGestão</strong>.</p>
+      <p>Recebemos um pedido para redefinir a senha da sua conta no <strong>ArcDesk</strong>.</p>
       <p>
         <a href="${link}" style="display: inline-block; background: #25665e; color: #fff; padding: 10px 18px; border-radius: 8px; text-decoration: none">
           Criar nova senha
@@ -144,7 +144,7 @@ router.post('/esqueci-senha', limiteTentativas, async (req, res) => {
     const link = `${urlDoApp()}/redefinir-senha?token=${token}`;
     const { texto, html } = emailRedefinicao(usuario.nome, link);
     // Sem await: a resposta não demora mais quando a conta existe
-    enviarEmail({ para: usuario.email, assunto: 'Redefinir sua senha · ArcGestão', texto, html }).catch((erro) =>
+    enviarEmail({ para: usuario.email, assunto: 'Redefinir sua senha · ArcDesk', texto, html }).catch((erro) =>
       console.error('Falha ao enviar o e-mail de redefinição de senha:', erro.message)
     );
   }

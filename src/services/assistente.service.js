@@ -916,7 +916,7 @@ function instrucoes(ctx, escritorio) {
   const [data, hora] = [ctx.hoje, ctx.agora];
   const semana = new Intl.DateTimeFormat('pt-BR', { weekday: 'long', timeZone: 'UTC' }).format(new Date(`${data}T12:00:00Z`));
   return [
-    `Você é o assistente do ArcGestão, sistema de gestão do escritório de arquitetura "${escritorio}".`,
+    `Você é o assistente do ArcDesk, sistema de gestão do escritório de arquitetura "${escritorio}".`,
     `Você conversa com ${ctx.usuario.nome} (${ctx.usuario.papel === 'ADMIN' ? 'administrador(a)' : 'membro da equipe'}).`,
     `Agora: ${semana}, ${rotuloDataLocal(data).slice(5)}, ${hora} (fuso ${ctx.fuso}).`,
     '',

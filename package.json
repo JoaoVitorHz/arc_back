@@ -1,7 +1,7 @@
 {
     "name": "arcback",
     "version": "1.0.0",
-    "description": "API do ArcGestao (Node + Express + Prisma + MySQL)",
+    "description": "API do ArcDesk (Node + Express + Prisma + MySQL)",
     "main": "src/server.js",
     "scripts": {
         "dev": "node --watch src/server.js",
