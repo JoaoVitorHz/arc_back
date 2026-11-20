@@ -4,7 +4,7 @@
 const prisma = require('../lib/prisma');
 const gateway = require('../lib/pagamentos');
 const { HttpError } = require('../utils/http');
-const { PLANO, DIAS_TESTE, DIAS_TOLERANCIA } = require('../constants/plano');
+const { PLANOS, planoPorCodigo, planoParaPessoas, DIAS_TESTE, DIAS_TOLERANCIA } = require('../constants/plano');
 
 const DIA = 24 * 60 * 60 * 1000;
 const somarDias = (data, dias) => new Date(data.getTime() + dias * DIA);
@@ -86,6 +86,74 @@ async function acessoDoEscritorio(escritorioId) {
   return calcularAcesso(escritorio, assinatura, atrasadaDesde(assinatura?.pagamentos));
 }
 
+// ---------- Pessoas e limite do plano ----------
+
+const pessoasTexto = (n) => (n === 1 ? '1 pessoa' : `${n} pessoas`);
+
+// Quem conta para o limite: a equipe + convites pendentes (senão daria para burlar o limite
+// deixando convites em aberto). emailIgnorado: convite que vai ser substituído por um novo.
+async function contarPessoas(escritorioId, { comConvites = true, emailIgnorado } = {}) {
+  const [membros, convites] = await Promise.all([
+    prisma.usuario.count({ where: { escritorioId } }),
+    comConvites
+      ? prisma.convite.count({
+          where: {
+            escritorioId,
+            aceitoEm: null,
+            expiraEm: { gt: new Date() },
+            ...(emailIgnorado ? { email: { not: emailIgnorado } } : {}),
+          },
+        })
+      : 0,
+  ]);
+  return membros + convites;
+}
+
+// Plano que vale agora: o da assinatura em andamento (ou cancelada, até o fim do período pago).
+// Sem assinatura (teste grátis) não há limite: o escritório testa com a equipe toda.
+function planoVigente(assinatura, agora = new Date()) {
+  if (!assinatura) return null;
+  const vale = assinatura.status !== 'CANCELADA' || (assinatura.pagoAte && agora < assinatura.pagoAte);
+  return vale ? planoPorCodigo(assinatura.plano) : null;
+}
+
+async function planoDoEscritorio(escritorioId) {
+  const assinatura = await prisma.assinatura.findUnique({
+    where: { escritorioId },
+    select: { plano: true, status: true, pagoAte: true },
+  });
+  return planoVigente(assinatura);
+}
+
+// Antes de pôr mais alguém na equipe (convite, conta criada pelo administrador ou convite aceito).
+// aceitandoConvite: quem aceita já estava contado como convite, então só a equipe conta.
+async function exigirVaga(escritorioId, { aceitandoConvite = false, emailIgnorado } = {}) {
+  const plano = await planoDoEscritorio(escritorioId);
+  if (!plano) return;
+  const pessoas = await contarPessoas(escritorioId, { comConvites: !aceitandoConvite, emailIgnorado });
+  if (pessoas + 1 <= plano.limitePessoas) return;
+  if (aceitandoConvite) {
+    throw new HttpError(
+      403,
+      `O escritório atingiu o limite de pessoas do plano ${plano.nome}. Peça ao administrador para mudar de plano.`,
+      'LIMITE_PLANO'
+    );
+  }
+  const maior = planoParaPessoas(pessoas + 1);
+  throw new HttpError(
+    403,
+    `O plano ${plano.nome} permite até ${pessoasTexto(plano.limitePessoas)}, contando os convites pendentes.` +
+      (maior ? ` Mude para o plano ${maior.nome} em Planos para adicionar mais gente.` : ''),
+    'LIMITE_PLANO'
+  );
+}
+
+// Para a tela da equipe: "3 de 5 pessoas no plano Escritório"
+async function vagasDaEquipe(escritorioId) {
+  const [plano, pessoas] = await Promise.all([planoDoEscritorio(escritorioId), contarPessoas(escritorioId)]);
+  return { pessoas, plano: plano ? { nome: plano.nome, limitePessoas: plano.limitePessoas } : null };
+}
+
 // ---------- Cópia local dos pagamentos ----------
 
 async function salvarPagamento(assinaturaId, p) {
@@ -164,9 +232,22 @@ async function situacao(escritorioId, { admin = false, sincronizarAgora = false 
   if (acesso.diasTeste > 0) datas.push(paraTexto(acesso.testeAte));
   if (assinatura?.pagoAte) datas.push(paraTexto(assinatura.pagoAte));
   const primeiroVencimento = diaQueExisteTodoMes(datas.sort().at(-1));
+  const pessoas = await contarPessoas(escritorioId);
+  const planoAtual = assinatura && assinatura.status !== 'CANCELADA' ? planoPorCodigo(assinatura.plano) : null;
 
   return {
-    plano: { nome: PLANO.nome, valorMensal: PLANO.valorMensal },
+    planos: PLANOS.map(({ codigo, nome, valorMensal, limitePessoas, destaque }) => ({
+      codigo,
+      nome,
+      valorMensal,
+      limitePessoas,
+      destaque: Boolean(destaque),
+    })),
+    // plano da assinatura em andamento (null sem assinatura ou cancelada)
+    plano: planoAtual ? { codigo: planoAtual.codigo, nome: planoAtual.nome, limitePessoas: planoAtual.limitePessoas } : null,
+    // equipe + convites pendentes, e o menor plano em que cabem
+    pessoas,
+    planoSugerido: planoParaPessoas(pessoas)?.codigo ?? null,
     cobrancaConfigurada: gateway.configurado(),
     acesso,
     primeiroVencimento,
@@ -264,6 +345,8 @@ function validarCartao(cartao = {}) {
 // IP de quem está pagando (o Asaas pede na assinatura com cartão)
 const ipDoPagador = (req) => String(req.ip || '').replace(/^::ffff:/, '');
 
+const descricaoDoPlano = (plano) => `ArcDesk ${plano.nome} - assinatura mensal`;
+
 // Evita duas assinaturas no gateway se o botão for clicado duas vezes
 const assinando = new Set();
 
@@ -271,6 +354,15 @@ async function assinar(req) {
   const escritorioId = req.escritorioId;
   const dados = validarDados(req.body);
   const cartao = dados.forma === 'CARTAO' ? validarCartao(req.body.cartao) : null;
+  const plano = planoPorCodigo(req.body.plano);
+  if (!plano) throw new HttpError(400, 'Escolha um plano');
+  const pessoas = await contarPessoas(escritorioId);
+  if (pessoas > plano.limitePessoas) {
+    throw new HttpError(
+      400,
+      `O plano ${plano.nome} permite até ${pessoasTexto(plano.limitePessoas)} e o escritório tem ${pessoasTexto(pessoas)}, contando os convites pendentes. Escolha um plano maior.`
+    );
+  }
 
   if (assinando.has(escritorioId)) throw new HttpError(409, 'A assinatura já está sendo criada. Aguarde.');
   assinando.add(escritorioId);
@@ -290,10 +382,10 @@ async function assinar(req) {
 
     const criada = await gateway.criarAssinatura({
       clienteId: gatewayClienteId,
-      valor: PLANO.valorMensal,
+      valor: plano.valorMensal,
       forma: dados.forma,
       primeiroVencimento,
-      descricao: `${PLANO.nome} - assinatura mensal`,
+      descricao: descricaoDoPlano(plano),
       referencia: `escritorio:${escritorioId}`,
       cartao,
       titular: dados,
@@ -301,8 +393,8 @@ async function assinar(req) {
     });
 
     const registro = {
-      plano: PLANO.codigo,
-      valor: PLANO.valorMensal,
+      plano: plano.codigo,
+      valor: plano.valorMensal,
       forma: dados.forma,
       status: 'AGUARDANDO_PAGAMENTO',
       gateway: gateway.nome,
@@ -351,6 +443,41 @@ async function assinar(req) {
   } finally {
     assinando.delete(escritorioId);
   }
+}
+
+// ---------- Trocar de plano ----------
+
+// Vale a partir da próxima mensalidade (sem cobrar diferença do mês atual). Para descer de
+// plano, a equipe precisa caber no plano menor.
+async function trocarPlano(escritorioId, codigo) {
+  const plano = planoPorCodigo(codigo);
+  if (!plano) throw new HttpError(400, 'Escolha um plano');
+  const assinatura = await prisma.assinatura.findUnique({ where: { escritorioId } });
+  if (!assinatura || assinatura.status === 'CANCELADA') throw new HttpError(404, 'Não há assinatura ativa');
+  if (assinatura.plano === plano.codigo) throw new HttpError(400, `O escritório já está no plano ${plano.nome}`);
+
+  const pessoas = await contarPessoas(escritorioId);
+  if (pessoas > plano.limitePessoas) {
+    throw new HttpError(
+      400,
+      `O plano ${plano.nome} permite até ${pessoasTexto(plano.limitePessoas)} e o escritório tem ${pessoasTexto(pessoas)}, contando os convites pendentes. Remova pessoas ou cancele convites em Equipe antes de mudar.`
+    );
+  }
+
+  await gateway.atualizarAssinatura(assinatura.gatewayAssinaturaId, {
+    valor: plano.valorMensal,
+    descricao: descricaoDoPlano(plano),
+  });
+  const atualizada = await prisma.assinatura.update({
+    where: { id: assinatura.id },
+    data: { plano: plano.codigo, valor: plano.valorMensal },
+  });
+  try {
+    await sincronizar(atualizada); // a mensalidade já gerada muda de valor no gateway
+  } catch (erro) {
+    console.error('[assinatura] falha ao sincronizar depois de trocar o plano:', erro.message);
+  }
+  return situacao(escritorioId, { admin: true });
 }
 
 // ---------- Cobrança em aberto (QR Code do Pix) ----------
@@ -426,6 +553,9 @@ module.exports = {
   assinar,
   cobrancaEmAberto,
   cancelar,
+  trocarPlano,
+  exigirVaga,
+  vagasDaEquipe,
   processarAviso,
   acessoDoEscritorio,
   calcularAcesso,

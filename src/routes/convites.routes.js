@@ -3,6 +3,7 @@ const bcrypt = require('bcryptjs');
 const prisma = require('../lib/prisma');
 const autenticar = require('../middlewares/autenticar');
 const { entrarNoEscritorio } = require('../services/equipe.service');
+const { exigirVaga } = require('../services/assinatura.service');
 const { HttpError, parseId, requireFields } = require('../utils/http');
 const {
   SALT_ROUNDS,
@@ -53,6 +54,7 @@ router.get('/token/:token', async (req, res) => {
 router.post('/token/:token/aceitar', limiteTentativas, async (req, res) => {
   requireFields(req.body, ['senha']);
   const convite = await conviteValido({ tokenHash: hashToken(req.params.token) });
+  await exigirVaga(convite.escritorioId, { aceitandoConvite: true });
   const conta = await prisma.usuario.findUnique({
     where: { email: convite.email },
     select: { id: true, senhaHash: true },
@@ -119,6 +121,7 @@ router.get('/meus', autenticar, async (req, res) => {
 // POST /api/convites/:id/aceitar  (aceitar estando logado, ex.: na tela "sem escritório" ou no perfil)
 router.post('/:id/aceitar', autenticar, async (req, res) => {
   const convite = await conviteValido({ id: parseId(req.params.id), email: await emailDoUsuario(req) });
+  await exigirVaga(convite.escritorioId, { aceitandoConvite: true });
   await entrarNoEscritorio(req.usuario.id, convite.escritorioId, convite.papel);
   await marcarAceito(convite);
   const usuario = await prisma.usuario.findUniqueOrThrow({ where: { id: req.usuario.id }, select: selecaoUsuario });

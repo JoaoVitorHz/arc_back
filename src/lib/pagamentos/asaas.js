@@ -144,6 +144,16 @@ async function criarAssinatura({ clienteId, valor, forma, primeiroVencimento, de
   };
 }
 
+// Troca de plano: novo valor nas próximas mensalidades, inclusive a que já foi gerada e ainda não
+// foi paga (o Asaas gera a próxima com antecedência). As já pagas não mudam.
+async function atualizarAssinatura(gatewayAssinaturaId, { valor, descricao }) {
+  await chamar('PUT', `/subscriptions/${encodeURIComponent(gatewayAssinaturaId)}`, {
+    value: valor,
+    description: descricao,
+    updatePendingPayments: true,
+  });
+}
+
 // Encerra a recorrência; o Asaas apaga as cobranças pendentes e mantém as pagas
 async function cancelarAssinatura(gatewayAssinaturaId) {
   await chamar('DELETE', `/subscriptions/${encodeURIComponent(gatewayAssinaturaId)}`);
@@ -209,6 +219,7 @@ module.exports = {
   configurado,
   criarCliente,
   criarAssinatura,
+  atualizarAssinatura,
   cancelarAssinatura,
   listarPagamentos,
   buscarPagamento,

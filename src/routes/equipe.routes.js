@@ -4,6 +4,7 @@ const prisma = require('../lib/prisma');
 const { enviarEmail, escaparHtml, smtpConfigurado } = require('../lib/email');
 const { exigirAdmin } = require('../middlewares/permissoes');
 const { resumoDoEscritorio } = require('../services/equipe.service');
+const { exigirVaga, vagasDaEquipe } = require('../services/assinatura.service');
 const { HttpError, parseId, requireFields } = require('../utils/http');
 const {
   SALT_ROUNDS,
@@ -95,7 +96,7 @@ async function enviarConvite(req, convite, token) {
 // GET /api/equipe  (todos veem a equipe; convites pendentes só para administradores)
 router.get('/', async (req, res) => {
   const souAdmin = req.usuario.papel === 'ADMIN';
-  const [membros, convites] = await Promise.all([
+  const [membros, convites, vagas] = await Promise.all([
     prisma.usuario.findMany({
       where: { escritorioId: req.escritorioId },
       select: selecaoMembro,
@@ -108,8 +109,10 @@ router.get('/', async (req, res) => {
           orderBy: { criadoEm: 'desc' },
         })
       : [],
+    vagasDaEquipe(req.escritorioId),
   ]);
-  res.json({ membros, convites, souAdmin });
+  // vagas: { pessoas, plano: { nome, limitePessoas } | null } (sem plano = teste grátis, sem limite)
+  res.json({ membros, convites, souAdmin, vagas });
 });
 
 // POST /api/equipe/sair  (qualquer pessoa da equipe, menos o último administrador)
@@ -142,6 +145,8 @@ router.post('/convites', async (req, res) => {
 
   const existente = await prisma.usuario.findUnique({ where: { email: dados.email }, select: { escritorioId: true } });
   if (existente?.escritorioId === req.escritorioId) throw new HttpError(409, 'Esta pessoa já faz parte da equipe');
+  // um convite novo para o mesmo e-mail substitui o anterior, então ele não conta duas vezes
+  await exigirVaga(req.escritorioId, { emailIgnorado: dados.email });
 
   const token = gerarTokenDeLink();
   const [, convite] = await prisma.$transaction([
@@ -201,6 +206,7 @@ router.post('/membros', async (req, res) => {
   if (existente) {
     throw new HttpError(409, 'Este e-mail já tem conta no ArcDesk. Envie um convite para essa pessoa.');
   }
+  await exigirVaga(req.escritorioId, { emailIgnorado: dados.email });
 
   const [membro] = await prisma.$transaction([
     prisma.usuario.create({
