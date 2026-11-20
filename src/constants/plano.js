@@ -11,7 +11,7 @@ const PLANO = {
 };
 
 // Dias de teste grátis contados da criação do escritório
-const DIAS_TESTE = Number(process.env.ASSINATURA_DIAS_TESTE || 14);
+const DIAS_TESTE = Number(process.env.ASSINATURA_DIAS_TESTE || 7);
 
 // Dias de tolerância depois do vencimento antes de suspender o acesso
 const DIAS_TOLERANCIA = Number(process.env.ASSINATURA_DIAS_TOLERANCIA || 7);
