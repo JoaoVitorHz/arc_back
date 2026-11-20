@@ -33,6 +33,7 @@ model Escritorio {
   tiposEvento TipoEvento[]
   lancamentos Lancamento[]
   arquivos    Arquivo[]
+  assinatura  Assinatura?
 
   @@index([encerradoPorId])
   @@map("escritorios")
@@ -380,4 +381,84 @@ model Lancamento {
   @@index([vencimento])
   @@index([serieId])
   @@map("lancamentos")
+}
+
+// ---------- Assinatura do ArcDesk ----------
+// O que o próprio escritório paga para usar o sistema. A cobrança roda no gateway (hoje o
+// Asaas); aqui fica uma cópia para liberar o acesso sem consultar o gateway a cada tela.
+
+enum StatusAssinatura {
+  AGUARDANDO_PAGAMENTO // criada, primeira cobrança ainda não paga
+  ATIVA
+  ATRASADA
+  CANCELADA
+}
+
+enum FormaPagamento {
+  PIX
+  BOLETO
+  CARTAO
+}
+
+model Assinatura {
+  id           Int              @id @default(autoincrement())
+  escritorioId Int              @unique
+  escritorio   Escritorio       @relation(fields: [escritorioId], references: [id], onDelete: Cascade)
+  plano        String
+  valor        Decimal          @db.Decimal(10, 2)
+  forma        FormaPagamento
+  status       StatusAssinatura @default(AGUARDANDO_PAGAMENTO)
+
+  gateway             String // "asaas"
+  gatewayClienteId    String
+  gatewayAssinaturaId String @unique
+
+  // Dados de cobrança (vão para a nota fiscal). Os dados do cartão nunca são guardados:
+  // só os 4 últimos números e a bandeira, que o gateway devolve.
+  tipoPessoa     String // PF | PJ
+  nome           String
+  documento      String // só os números do CPF/CNPJ
+  email          String
+  telefone       String?
+  cep            String
+  numero         String
+  cartaoFinal    String?
+  cartaoBandeira String?
+
+  // Acesso garantido até esta data pelos pagamentos feitos (vale também depois de cancelar)
+  pagoAte      DateTime?
+  canceladaEm  DateTime?
+  criadoEm     DateTime  @default(now())
+  atualizadoEm DateTime  @updatedAt
+
+  pagamentos PagamentoAssinatura[]
+
+  @@map("assinaturas")
+}
+
+enum StatusPagamento {
+  PENDENTE
+  PAGO
+  ATRASADO
+  ESTORNADO
+  CANCELADO
+}
+
+model PagamentoAssinatura {
+  id                 Int             @id @default(autoincrement())
+  assinaturaId       Int
+  assinatura         Assinatura      @relation(fields: [assinaturaId], references: [id], onDelete: Cascade)
+  gatewayPagamentoId String          @unique
+  valor              Decimal         @db.Decimal(10, 2)
+  vencimento         DateTime        @db.Date
+  status             StatusPagamento
+  forma              FormaPagamento?
+  pagoEm             DateTime?
+  linkFatura         String?         @db.VarChar(500)
+  linkBoleto         String?         @db.VarChar(500)
+  criadoEm           DateTime        @default(now())
+  atualizadoEm       DateTime        @updatedAt
+
+  @@index([assinaturaId, vencimento])
+  @@map("pagamentos_assinatura")
 }
