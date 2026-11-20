@@ -27,6 +27,7 @@ const selecaoUsuario = {
   papel: true,
   verFinanceiro: true,
   deveTrocarSenha: true,
+  donoPlataforma: true,
   escritorioId: true,
   escritorio: { select: { id: true, nome: true } },
 };

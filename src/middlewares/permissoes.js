@@ -29,4 +29,11 @@ function exigirFinanceiro(req, res, next) {
   next();
 }
 
-module.exports = { exigirEscritorio, exigirAdmin, exigirFinanceiro, podeVerFinanceiro };
+// Painel admin (/api/admin): só o dono da plataforma (campo donoPlataforma do usuário).
+// 404 em vez de 403 para não revelar que a rota existe.
+function exigirDonoPlataforma(req, res, next) {
+  if (!req.usuario?.donoPlataforma) throw new HttpError(404, 'Rota não encontrada');
+  next();
+}
+
+module.exports = { exigirEscritorio, exigirAdmin, exigirFinanceiro, podeVerFinanceiro, exigirDonoPlataforma };

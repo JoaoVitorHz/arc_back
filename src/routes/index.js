@@ -1,6 +1,7 @@
 const { Router } = require('express');
 const autenticar = require('../middlewares/autenticar');
-const { exigirEscritorio, exigirFinanceiro } = require('../middlewares/permissoes');
+const { exigirEscritorio, exigirFinanceiro, exigirDonoPlataforma } = require('../middlewares/permissoes');
+const prisma = require('../lib/prisma');
 const exigirAssinatura = require('../middlewares/assinatura');
 
 const router = Router();
@@ -13,6 +14,9 @@ router.use('/webhooks', require('./webhooks.routes'));
 
 // Daqui pra baixo, todas exigem login
 router.use(autenticar);
+
+// Painel admin: só o dono da plataforma
+router.use('/admin', exigirDonoPlataforma, require('./admin.routes'));
 
 // Funciona também para quem está sem escritório (criar, restaurar); o resto exige escritório
 router.use('/escritorio', require('./escritorio.routes'));
@@ -35,6 +39,15 @@ router.use('/eventos', require('./eventos.routes'));
 router.use('/tipos-evento', require('./tiposEvento.routes'));
 router.use('/lancamentos', exigirFinanceiro, require('./lancamentos.routes'));
 router.use('/dashboard', require('./dashboard.routes'));
-router.use('/ia', require('./ia.routes'));
+// Conta cada uso da IA por escritório (painel admin: acompanhar o custo); não atrasa a resposta
+function contarUsoIa(req, res, next) {
+  if (req.method === 'POST') {
+    prisma.escritorio
+      .update({ where: { id: req.escritorioId }, data: { usosIa: { increment: 1 }, ultimoUsoIaEm: new Date() } })
+      .catch((erro) => console.error('Falha ao contar o uso da IA:', erro.message));
+  }
+  next();
+}
+router.use('/ia', contarUsoIa, require('./ia.routes'));
 
 module.exports = router;

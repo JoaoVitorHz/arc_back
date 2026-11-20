@@ -41,8 +41,11 @@ const EM_ABERTO = ['PENDENTE', 'ATRASADO'];
 
 // Pode usar o sistema? Teste grátis, assinatura em dia, pago até uma data (mesmo cancelada)
 // ou atrasada ainda dentro da tolerância.
+// O dono da plataforma pode estender o teste (escritorio.testeAte) ou dar cortesia (cortesiaAte).
 function calcularAcesso(escritorio, assinatura, atrasadaDesde, agora = new Date()) {
-  const testeAte = somarDias(escritorio.criadoEm, DIAS_TESTE);
+  const testePadrao = somarDias(escritorio.criadoEm, DIAS_TESTE);
+  const testeAte = escritorio.testeAte && escritorio.testeAte > testePadrao ? escritorio.testeAte : testePadrao;
+  const cortesia = Boolean(escritorio.cortesiaAte && agora < escritorio.cortesiaAte);
   const emTeste = agora < testeAte;
   const pago = Boolean(assinatura?.pagoAte && agora < assinatura.pagoAte);
   const diasTeste = emTeste ? Math.ceil((testeAte - agora) / DIA) : 0;
@@ -53,6 +56,9 @@ function calcularAcesso(escritorio, assinatura, atrasadaDesde, agora = new Date(
   if (assinatura?.status === 'ATIVA') {
     liberado = true;
     motivo = 'ATIVA';
+  } else if (cortesia) {
+    liberado = true;
+    motivo = 'CORTESIA';
   } else if (assinatura?.status === 'ATRASADA') {
     suspendeEm = atrasadaDesde ? somarDias(atrasadaDesde, DIAS_TOLERANCIA) : null;
     liberado = emTeste || pago || !suspendeEm || agora < suspendeEm;
@@ -61,7 +67,15 @@ function calcularAcesso(escritorio, assinatura, atrasadaDesde, agora = new Date(
     liberado = emTeste || pago;
     motivo = emTeste ? 'TESTE' : pago ? 'PAGO_ATE' : 'SEM_ASSINATURA';
   }
-  return { obrigatoria: cobrancaObrigatoria(), liberado, motivo, testeAte, diasTeste, suspendeEm };
+  return {
+    obrigatoria: cobrancaObrigatoria(),
+    liberado,
+    motivo,
+    testeAte,
+    diasTeste,
+    suspendeEm,
+    cortesiaAte: cortesia ? escritorio.cortesiaAte : null,
+  };
 }
 
 async function carregar(escritorioId) {
@@ -69,6 +83,8 @@ async function carregar(escritorioId) {
     where: { id: escritorioId },
     select: {
       criadoEm: true,
+      testeAte: true,
+      cortesiaAte: true,
       assinatura: { include: { pagamentos: { orderBy: { vencimento: 'desc' }, take: 24 } } },
     },
   });
@@ -231,6 +247,7 @@ async function situacao(escritorioId, { admin = false, sincronizarAgora = false 
   const datas = [hojeBrasil()];
   if (acesso.diasTeste > 0) datas.push(paraTexto(acesso.testeAte));
   if (assinatura?.pagoAte) datas.push(paraTexto(assinatura.pagoAte));
+  if (acesso.cortesiaAte) datas.push(paraTexto(acesso.cortesiaAte));
   const primeiroVencimento = diaQueExisteTodoMes(datas.sort().at(-1));
   const pessoas = await contarPessoas(escritorioId);
   const planoAtual = assinatura && assinatura.status !== 'CANCELADA' ? planoPorCodigo(assinatura.plano) : null;
@@ -559,6 +576,8 @@ module.exports = {
   processarAviso,
   acessoDoEscritorio,
   calcularAcesso,
+  planoVigente,
+  contarPessoas,
   // só para os testes
   somarMeses,
   diaQueExisteTodoMes,

@@ -25,6 +25,13 @@ model Escritorio {
   encerradoPorId Int?
   encerradoPor   Usuario?  @relation("EscritoriosEncerrados", fields: [encerradoPorId], references: [id], onDelete: SetNull)
 
+  // Ajustes do dono da plataforma (painel admin): teste grátis estendido e acesso de cortesia
+  testeAte    DateTime?
+  cortesiaAte DateTime?
+  // Uso da IA (cada chamada ao assistente, briefing, relatório, voz...), para acompanhar o custo
+  usosIa        Int       @default(0)
+  ultimoUsoIaEm DateTime?
+
   usuarios    Usuario[]    @relation("MembrosDoEscritorio")
   convites    Convite[]
   clientes    Cliente[]
@@ -59,6 +66,12 @@ model Usuario {
   tokensValidosApos DateTime?
   criadoEm          DateTime     @default(now())
   atualizadoEm      DateTime     @updatedAt
+  // Atualizado no login e, no máximo a cada 15 minutos, enquanto a pessoa usa o sistema
+  ultimoAcessoEm    DateTime?
+  // Bloqueado pelo dono da plataforma (painel admin): não entra nem usa a API
+  bloqueadoEm       DateTime?
+  // Dono do ArcDesk: acessa o painel admin (/admin). Não tem nada a ver com o papel no escritório.
+  donoPlataforma    Boolean      @default(false)
 
   // Vazio = a pessoa não faz parte de nenhum escritório (saiu, foi removida ou encerrou o dela)
   escritorioId Int?
@@ -73,6 +86,7 @@ model Usuario {
   revisoesEnviadas      RevisaoEtapa[]          @relation("RevisaoEnviadaPor")
   revisoesComPedido     RevisaoEtapa[]          @relation("RevisaoPedidoPor")
   revisoesAprovadas     RevisaoEtapa[]          @relation("RevisaoAprovadaPor")
+  acoesAdmin            AcaoAdmin[]
 
   @@index([escritorioId])
   @@map("usuarios")
@@ -454,9 +468,29 @@ model PagamentoAssinatura {
   forma              FormaPagamento?
   pagoEm             DateTime?
   linkFatura         String?         @db.VarChar(500)
+  // Nota fiscal emitida à mão pelo dono da plataforma (painel admin > Notas)
+  notaEmitidaEm      DateTime?
   criadoEm           DateTime        @default(now())
   atualizadoEm       DateTime        @updatedAt
 
   @@index([assinaturaId, vencimento])
   @@map("pagamentos_assinatura")
+}
+
+// ---------- Painel admin ----------
+
+// O que o dono da plataforma fez no painel admin (estender teste, editar usuário, bloquear...)
+model AcaoAdmin {
+  id        Int      @id @default(autoincrement())
+  adminId   Int?
+  admin     Usuario? @relation(fields: [adminId], references: [id], onDelete: SetNull)
+  acao      String
+  alvoTipo  String // ESCRITORIO | USUARIO | PAGAMENTO
+  alvoId    Int
+  detalhes  Json?
+  criadoEm  DateTime @default(now())
+
+  @@index([alvoTipo, alvoId])
+  @@index([adminId])
+  @@map("acoes_admin")
 }

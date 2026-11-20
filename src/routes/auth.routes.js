@@ -60,16 +60,20 @@ router.post('/login', limiteTentativas, async (req, res) => {
 
   const usuario = await prisma.usuario.findUnique({
     where: { email: normalizarEmail(req.body.email) },
-    select: { ...selecaoUsuario, senhaHash: true },
+    select: { ...selecaoUsuario, senhaHash: true, bloqueadoEm: true },
   });
 
   const senhaCorreta = await bcrypt.compare(String(req.body.senha), usuario?.senhaHash || HASH_FALSO);
   if (!usuario || !senhaCorreta) {
     throw new HttpError(401, 'E-mail ou senha incorretos');
   }
+  if (usuario.bloqueadoEm) {
+    throw new HttpError(403, 'Esta conta está bloqueada. Fale com o suporte do ArcDesk.', 'CONTA_BLOQUEADA');
+  }
+  await prisma.usuario.update({ where: { id: usuario.id }, data: { ultimoAcessoEm: new Date() } });
 
   // eslint-disable-next-line no-unused-vars
-  const { senhaHash, ...dados } = usuario;
+  const { senhaHash, bloqueadoEm, ...dados } = usuario;
   res.json(respostaSessao(dados));
 });
 
