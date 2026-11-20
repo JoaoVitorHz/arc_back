@@ -8,10 +8,25 @@ const { PLANO, DIAS_TESTE, DIAS_TOLERANCIA } = require('../constants/plano');
 
 const DIA = 24 * 60 * 60 * 1000;
 const somarDias = (data, dias) => new Date(data.getTime() + dias * DIA);
+// Mesmo dia no mês seguinte; se o mês não tiver esse dia, o último dia dele (31/01 -> 28/02,
+// e não 03/03 como faria o setUTCMonth sozinho)
 function somarMeses(data, meses) {
   const nova = new Date(data);
+  const dia = nova.getUTCDate();
+  nova.setUTCDate(1);
   nova.setUTCMonth(nova.getUTCMonth() + meses);
+  const ultimoDia = new Date(Date.UTC(nova.getUTCFullYear(), nova.getUTCMonth() + 1, 0)).getUTCDate();
+  nova.setUTCDate(Math.min(dia, ultimoDia));
   return nova;
+}
+
+// Vencimentos só até o dia 28, que existe em todos os meses: assim a mensalidade cai sempre no
+// mesmo dia. Se cair em 29, 30 ou 31, passa para o dia 1º do mês seguinte (o cliente ganha
+// esses dias, nunca paga antes da hora).
+function diaQueExisteTodoMes(texto) {
+  const [ano, mes, dia] = texto.split('-').map(Number);
+  if (dia <= 28) return texto;
+  return paraTexto(new Date(Date.UTC(ano, mes, 1)));
 }
 // "AAAA-MM-DD" (datas do gateway) <-> Date em UTC, como as colunas @db.Date
 const paraData = (texto) => (texto ? new Date(`${String(texto).slice(0, 10)}T00:00:00Z`) : null);
@@ -149,7 +164,7 @@ async function situacao(escritorioId, { admin = false, sincronizarAgora = false 
   const datas = [hojeBrasil()];
   if (acesso.diasTeste > 0) datas.push(paraTexto(acesso.testeAte));
   if (assinatura?.pagoAte) datas.push(paraTexto(assinatura.pagoAte));
-  const primeiroVencimento = datas.sort().at(-1);
+  const primeiroVencimento = diaQueExisteTodoMes(datas.sort().at(-1));
 
   return {
     plano: { nome: PLANO.nome, valorMensal: PLANO.valorMensal },
@@ -408,4 +423,15 @@ async function processarAviso(corpo) {
   return 'atualizado';
 }
 
-module.exports = { situacao, assinar, cobrancaEmAberto, cancelar, processarAviso, acessoDoEscritorio, calcularAcesso };
+module.exports = {
+  situacao,
+  assinar,
+  cobrancaEmAberto,
+  cancelar,
+  processarAviso,
+  acessoDoEscritorio,
+  calcularAcesso,
+  // só para os testes
+  somarMeses,
+  diaQueExisteTodoMes,
+};
