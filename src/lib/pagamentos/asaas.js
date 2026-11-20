@@ -58,8 +58,9 @@ async function chamar(metodo, caminho, corpo) {
   return dados;
 }
 
-const FORMA_PARA_ASAAS = { PIX: 'PIX', BOLETO: 'BOLETO', CARTAO: 'CREDIT_CARD' };
-const FORMA_DO_ASAAS = { PIX: 'PIX', BOLETO: 'BOLETO', CREDIT_CARD: 'CARTAO' };
+// Só Pix e cartão (boleto foi tirado: compensação lenta e estorno difícil)
+const FORMA_PARA_ASAAS = { PIX: 'PIX', CARTAO: 'CREDIT_CARD' };
+const FORMA_DO_ASAAS = { PIX: 'PIX', CREDIT_CARD: 'CARTAO' };
 
 const STATUS_DO_ASAAS = {
   PENDING: 'PENDENTE',
@@ -89,7 +90,6 @@ function normalizarPagamento(p) {
     forma: FORMA_DO_ASAAS[p.billingType] || null,
     pagoEm: p.paymentDate || p.confirmedDate || p.clientPaymentDate || null,
     linkFatura: p.invoiceUrl || null,
-    linkBoleto: p.bankSlipUrl || null,
   };
 }
 
@@ -163,11 +163,6 @@ async function pix(gatewayPagamentoId) {
   return { imagem: dados.encodedImage, copiaECola: dados.payload, expiraEm: dados.expirationDate };
 }
 
-async function linhaDigitavel(gatewayPagamentoId) {
-  const dados = await chamar('GET', `/payments/${encodeURIComponent(gatewayPagamentoId)}/identificationField`);
-  return dados.identificationField;
-}
-
 // Nota fiscal automática da assinatura (só quando ASAAS_EMITIR_NOTA=true). Os códigos vêm da
 // contabilidade e ficam no .env. Confira no painel do Asaas antes de ligar em produção.
 async function configurarNota(gatewayAssinaturaId) {
@@ -218,7 +213,6 @@ module.exports = {
   listarPagamentos,
   buscarPagamento,
   pix,
-  linhaDigitavel,
   configurarNota,
   webhookAutentico,
   lerWebhook,

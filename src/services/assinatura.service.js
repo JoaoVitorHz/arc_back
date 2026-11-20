@@ -96,7 +96,6 @@ async function salvarPagamento(assinaturaId, p) {
     forma: p.forma,
     pagoEm: paraData(p.pagoEm),
     linkFatura: p.linkFatura,
-    linkBoleto: p.linkBoleto,
   };
   await prisma.pagamentoAssinatura.upsert({
     where: { gatewayPagamentoId: p.gatewayPagamentoId },
@@ -244,7 +243,7 @@ function validarDados(corpo) {
   }
   if (dados.cep.length !== 8) throw new HttpError(400, 'CEP inválido');
   if (!dados.numero) throw new HttpError(400, 'Informe o número do endereço');
-  if (!['PIX', 'BOLETO', 'CARTAO'].includes(dados.forma)) throw new HttpError(400, 'Escolha a forma de pagamento');
+  if (!['PIX', 'CARTAO'].includes(dados.forma)) throw new HttpError(400, 'Escolha Pix ou cartão de crédito');
   return dados;
 }
 
@@ -354,7 +353,7 @@ async function assinar(req) {
   }
 }
 
-// ---------- Cobrança em aberto (Pix / boleto) ----------
+// ---------- Cobrança em aberto (QR Code do Pix) ----------
 
 async function cobrancaEmAberto(escritorioId) {
   const assinatura = await prisma.assinatura.findUnique({
@@ -365,9 +364,8 @@ async function cobrancaEmAberto(escritorioId) {
   if (!pagamento) return { pagamento: null };
 
   const forma = pagamento.forma || assinatura.forma;
-  const resposta = { pagamento: { ...resumoPagamento(pagamento), forma, linkBoleto: pagamento.linkBoleto } };
+  const resposta = { pagamento: { ...resumoPagamento(pagamento), forma } };
   if (forma === 'PIX') resposta.pix = await gateway.pix(pagamento.gatewayPagamentoId);
-  if (forma === 'BOLETO') resposta.linhaDigitavel = await gateway.linhaDigitavel(pagamento.gatewayPagamentoId);
   return resposta;
 }
 

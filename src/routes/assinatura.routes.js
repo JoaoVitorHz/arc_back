@@ -17,14 +17,14 @@ router.get('/', async (req, res) => {
 });
 
 // POST /api/assinatura
-// { tipoPessoa: 'PJ'|'PF', nome, documento, email, telefone?, cep, numero, forma: 'PIX'|'BOLETO'|'CARTAO',
+// { tipoPessoa: 'PJ'|'PF', nome, documento, email, telefone?, cep, numero, forma: 'PIX'|'CARTAO',
 //   cartao?: { numero, nome, validade: 'MM/AA', cvv } }
 // O cartão vai direto para o gateway: não é salvo nem registrado em log
 router.post('/', exigirAdmin, async (req, res) => {
   res.status(201).json(await assinar(req));
 });
 
-// GET /api/assinatura/cobranca -> { pagamento, pix?: { imagem, copiaECola, expiraEm }, linhaDigitavel? }
+// GET /api/assinatura/cobranca -> { pagamento, pix?: { imagem, copiaECola, expiraEm } }
 router.get('/cobranca', exigirAdmin, async (req, res) => {
   res.json(await cobrancaEmAberto(req.escritorioId));
 });

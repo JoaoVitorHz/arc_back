@@ -396,7 +396,6 @@ enum StatusAssinatura {
 
 enum FormaPagamento {
   PIX
-  BOLETO
   CARTAO
 }
 
@@ -455,7 +454,6 @@ model PagamentoAssinatura {
   forma              FormaPagamento?
   pagoEm             DateTime?
   linkFatura         String?         @db.VarChar(500)
-  linkBoleto         String?         @db.VarChar(500)
   criadoEm           DateTime        @default(now())
   atualizadoEm       DateTime        @updatedAt
 
